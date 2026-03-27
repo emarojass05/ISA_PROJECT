@@ -1,165 +1,174 @@
-# ISA Design – 32-bit RISC with Security Extensions (TEA + Key Vault)
-
-## 1. Overview
-- Arquitectura: RISC de 32 bits
-- Tamaño de instrucción: 32 bits
-- Registros: 8 registros de propósito general (R0–R7), 32 bits cada uno
-- Program Counter (PC): 32 bits
-- Registro de estado: incluye bandera de autenticación (AUTH)
+# ISA – RISC 32-bit con Extensiones de Seguridad
 
 ---
 
-## 2. Register File
+## Flujo general
 
-| Registro | Descripción |
-|----------|------------|
-| R0–R7    | Registros generales de 32 bits |
+CPU → AUTH → habilita acceso seguro  
+CPU → KeyVault (solo instrucciones especiales)  
+CPU ↔ Memoria  
+CPU → TEA → Memoria  
+Registros ↔ ALU  
 
 ---
 
-## 3. Instruction Encoding
+## Registros
 
-Todas las instrucciones tienen 32 bits.
+- 8 registros de propósito general (32 bits)
+- R0 = 0 (hardwired)
+- R6 = SP (stack pointer)
+- R7 = RA (return address)
+
+---
+
+## Program Counter
+
+- PC de 32 bits
+- Incremento: PC + 4
+- Modificado por saltos y branches
+
+---
+
+## Registro de Estado
+
+- AUTH flag
+- Controla acceso a:
+  - Key Vault
+  - Instrucciones de cifrado
+
+---
+
+## Tipos de Instrucción
 
 ### Tipo R (ALU)
-[ opcode(6) | rd(3) | rs1(3) | rs2(3) | unused(17) ]
 
-### Tipo I (inmediatos / memoria)
-[ opcode(6) | rd(3) | rs1(3) | immediate(20) ]
+Formato:
+[ opcode | rd | rs1 | rs2 | unused ]
 
-### Tipo B (branch)
-[ opcode(6) | rs1(3) | rs2(3) | offset(20) ]
-
-### Tipo J (jump)
-[ opcode(6) | address(26) ]
-
-### Tipo S (seguridad)
-[ opcode(6) | rd(3) | rs(3) | key_id(2) | unused(18) ]
-
----
-
-## 4. Instruction Set
-
-### 4.1 ALU Instructions (Tipo R)
-
-| Instrucción           | Descripción            |
-|----------------------|------------------------|
-| ADD rd, rs1, rs2     | rd = rs1 + rs2         |
-| SUB rd, rs1, rs2     | rd = rs1 - rs2         |
-| AND rd, rs1, rs2     | rd = rs1 & rs2         |
-| OR  rd, rs1, rs2     | rd = rs1 | rs2         |
-| XOR rd, rs1, rs2     | rd = rs1 ^ rs2         |
+Instrucciones:
+- ADD rd, rs1, rs2
+- SUB rd, rs1, rs2
+- AND rd, rs1, rs2
+- OR rd, rs1, rs2
+- XOR rd, rs1, rs2
+- SLL rd, rs1, rs2
+- SRL rd, rs1, rs2
 
 ---
 
-### 4.2 Immediate Instructions (Tipo I)
+### Tipo I (Inmediatos / Memoria)
 
-| Instrucción           | Descripción            |
-|----------------------|------------------------|
-| ADDI rd, rs1, imm    | rd = rs1 + imm         |
+Formato:
+[ opcode | rd | rs1 | immediate ]
 
----
-
-### 4.3 Memory Instructions (Tipo I)
-
-| Instrucción           | Descripción            |
-|----------------------|------------------------|
-| LOAD rd, addr        | rd = MEM[addr]         |
-| STORE rs, addr       | MEM[addr] = rs         |
+Instrucciones:
+- ADDI rd, rs1, imm
+- LOAD rd, offset(rs1)
 
 ---
 
-### 4.4 Control Flow (Tipo B / J)
+### Tipo Memoria (Store)
 
-| Instrucción           | Descripción                          |
-|----------------------|--------------------------------------|
-| BEQ rs1, rs2, offset | Si rs1 == rs2 → PC += offset         |
-| BNE rs1, rs2, offset | Si rs1 != rs2 → PC += offset         |
-| JMP address          | PC = address                         |
+Formato:
+[ opcode | rs2 | rs1 | offset ]
 
----
-
-### 4.5 Security Instructions (Tipo S)
-
-#### Key Vault
-
-| Instrucción        | Descripción                          |
-|-------------------|--------------------------------------|
-| LOADKEY k, rs     | Guarda llave en la posición k        |
-| AUTH rs           | Activa estado de autenticación       |
+Instrucciones:
+- STORE rs2, offset(rs1)
 
 ---
 
-#### TEA Encryption
+### Tipo Branch (Control de flujo condicional)
 
-| Instrucción           | Descripción                              |
-|----------------------|------------------------------------------|
-| TEAENC rd, rs, k     | rd = TEA_encrypt(rs, key[k])             |
-| TEADEC rd, rs, k     | rd = TEA_decrypt(rs, key[k])             |
+Formato:
+[ opcode | rs1 | rs2 | offset ]
+
+Instrucciones:
+- BEQ rs1, rs2, offset
+- BNE rs1, rs2, offset
+- BLT rs1, rs2, offset
+- BGE rs1, rs2, offset
 
 ---
 
-## 5. Key Vault (Secure Memory)
+### Tipo Jump (Control de flujo incondicional)
 
-- Capacidad: 4 llaves
-- Tamaño por llave: 128 bits
-- Acceso: solo mediante instrucciones especiales
+Formato:
+[ opcode | address ]
+
+Instrucciones:
+- JMP address
+- CALL address
+- RET
+
+---
+
+### Tipo Seguridad (Vault / Cifrado)
+
+Formato:
+[ opcode | campos específicos ]
+
+Instrucciones:
+
+#### Autenticación
+- AUTH rs  
+Activa modo seguro (AUTH = 1)
+
+#### Manejo de llaves
+- LOADKEY k, rs1, rs2, rs3, rs4  
+Carga llave de 128 bits en el Key Vault
+
+#### Cifrado TEA
+- TEAENC rs1, rs2, k  
+Cifra bloque de 64 bits
+
+- TEADEC rs1, rs2, k  
+Descifra bloque de 64 bits
+
+---
+
+## Key Vault
+
+- Memoria segura interna
+- 4 llaves de 128 bits
 - No accesible como memoria normal
-- No se pueden leer llaves directamente
+- Solo accesible mediante instrucciones
 
 ---
 
-## 6. Security Model
+## Modelo de Seguridad
 
-- Se requiere ejecutar AUTH antes de:
+- AUTH requerido para:
   - LOADKEY
   - TEAENC
   - TEADEC
 
-- Si no está autenticado:
-  → Se genera excepción o error
+- Si AUTH = 0:
+  - Se genera excepción
+  - Se bloquea la instrucción
 
 ---
 
-## 7. TEA Algorithm Support
+## TEA (Tiny Encryption Algorithm)
 
-- Algoritmo: Tiny Encryption Algorithm (TEA)
-- Tamaño de bloque: 64 bits
+- Bloque: 64 bits
 - Llave: 128 bits
 - Rondas: 32
-- Constante:
-DELTA = 0x9e3779b9
+- Constante: 0x9e3779b9
 
 ---
 
-## 8. Execution Semantics (Ejemplos)
+## Ejecución
 
-ADD R1, R2, R3  
-→ R1 = R2 + R3  
-
-LOAD R1, 0x1000  
-→ R1 = MEM[0x1000]  
-
-STORE R1, 0x2000  
-→ MEM[0x2000] = R1  
-
-TEAENC R1, R2, K0  
-→ R1 = TEA_encrypt(R2, key[0])  
+- ALU: 1 ciclo
+- Memoria: etapa MEM
+- TEA: multi-cycle
+- Puede generar stall en pipeline
 
 ---
 
-## 9. Example Program
+## Notas
 
-LOAD R1, 0x1000  
-AUTH R3  
-LOADKEY K0, R4  
-TEAENC R2, R1, K0  
-STORE R2, 0x2000  
-
----
-
-## 10. Notes
-
-- Arquitectura diseñada para simplicidad y eficiencia
-- Balance entre hardware y funcionalidad
-- Instrucciones de seguridad optimizadas para cifrado
+- Arquitectura tipo RISC (load/store)
+- Seguridad integrada en hardware
+- Separación entre memoria normal y Key Vault
+- Diseño enfocado en eficiencia y protección de datos
