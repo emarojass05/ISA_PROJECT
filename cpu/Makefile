@@ -1,38 +1,48 @@
 # =========================
-# Makefile CPU
+# Configuración
 # =========================
 
-# Archivos
-SRC = src/register_file.sv
-TB  = testbenches/tb_register_file.sv
-
-# Output
-OUT = sim/register_file.vvp
-VCD = sim/register_file.vcd
-
-# Compilador
 IVERILOG = iverilog
 VVP = vvp
+FLAGS = -g2012
 
-# -------------------------
+SRC_DIR = src
+TB_DIR  = testbenches
+SIM_DIR = sim
+
+# =========================
+# Targets disponibles
+# =========================
+
 # Default
-# -------------------------
-all: run
+all: run_register
 
 # -------------------------
-# Compilar
+# REGISTER FILE
 # -------------------------
-build:
-	mkdir -p sim
-	$(IVERILOG) -g2012 -o $(OUT) $(SRC) $(TB)
+build_register:
+	mkdir -p $(SIM_DIR)
+	$(IVERILOG) $(FLAGS) -o $(SIM_DIR)/register_file.vvp \
+	$(SRC_DIR)/register_file.sv \
+	$(TB_DIR)/tb_register_file.sv
+
+run_register: build_register
+	$(VVP) $(SIM_DIR)/register_file.vvp
+
 # -------------------------
-# Ejecutar
+# ALU
 # -------------------------
-run: build
-	$(VVP) $(OUT)
+build_alu:
+	mkdir -p $(SIM_DIR)
+	$(IVERILOG) $(FLAGS) -o $(SIM_DIR)/alu.vvp \
+	$(SRC_DIR)/alu.sv \
+	$(TB_DIR)/tb_alu.sv
+
+run_alu: build_alu
+	$(VVP) $(SIM_DIR)/alu.vvp
 
 # -------------------------
 # Limpiar
 # -------------------------
 clean:
-	rm -rf sim
+	rm -rf $(SIM_DIR)
