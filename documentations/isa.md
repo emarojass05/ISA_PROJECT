@@ -125,7 +125,37 @@ Cifra bloque de 64 bits
 Descifra bloque de 64 bits
 
 ---
+## Instrucciones del codigo C a Assembly necesarias para el programa
 
+Categorias:
+- Acceso a Memoria 
+
+v0 = [v0], v1 = v[1] | LOAD o lw ; Lee una palabra de 32 bits desde una dirección de la memoria RAM (donde
+ está el archivo) y la guarda en un registro de la ALU (ej. R1).
+
+ v[0] = v0,  v[1] = v1  |  STORE o SW; Toma el resultado final almacenado en un registro de la ALU y lo escribe de vuelta en la memoria RAM.
+
+ - Aritmetica Basica 
+
+ sum += DELTA, + key[0] | ADD/ADDI; Suma el contenido de dos registros, o suma un registro con un valor constante inmediato (como el incremento de tu contador i).
+
+ sum -= DELTA, v0 -= ... | SUB; Resta el valor de un registro de otro. Esencial para revertir las operaciones matemáticas en la función tea_decrypt.
+
+ - Desplazamiento
+
+ v1 << 4, v0 << 4 | SLLI (Shift Left Logical Immediate); Mueve todos los bits del registro hacia la izquierda una cantidad fija (en este caso, 4 posiciones). Introduce ceros a la derecha.
+
+ v1 >> 5, v0 >> 5 | SRLI (Shift Right Logical Immediate); Mueve todos los bits hacia la derecha (5 posiciones). Esencial para la mezcla de datos que hace el algoritmo.
+
+ - Operaciones Logicas
+
+ ^ (ej. ... ^ (v1 + sum) ^ ...) | XOR (OR Exclusivo); Compara bit a bit dos registros. Si los bits son diferentes, da 1; si son iguales, da 0. Es la base de cualquier algoritmo criptográfico moderno.
+
+ - Control de Flujo
+
+ i < 32 | CMP (Compare) o SLTI (Set Less Than); Compara si tu registro contador (que lleva el valor de i) ha alcanzado el límite de 32 rondas.
+
+ for (...) { ... } | BRANCH (ej. BLT Branch if Less Than); Si la comparación anterior indica que i es menor a 32, obliga al Program Counter (PC) a "saltar" hacia atrás y repetir las matemáticas.
 ## Key Vault
 
 - Memoria segura interna
