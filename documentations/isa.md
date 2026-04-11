@@ -1,7 +1,5 @@
 # ISA – RISC 32-bit con Extensiones de Seguridad
 
----
-
 ## Flujo general
 
 CPU → AUTH → habilita acceso seguro  
@@ -10,16 +8,21 @@ CPU ↔ Memoria
 CPU → TEA → Memoria  
 Registros ↔ ALU  
 
----
-
 ## Registros
 
-- 8 registros de propósito general (32 bits)
-- R0 = 0 (hardwired)
-- R6 = SP (stack pointer)
-- R7 = RA (return address)
+16 Registros de 32 bits
 
----
+| Registro| Alias| Uso| Guardado por|
+|-|-|-|-|
+| r0| zero| Constante zero|--|
+| r1| ra| Dirección de retorno| Caller|
+| r2| sp| Stack pointer| Callee|
+| r3-r7| a0-a4| Argumentos/retorno de funciones| Caller|
+| r8-r12| s0-s4| Registros guardados | Callee|
+| r13-r15| t0-t2| Registros temporales| Caller|
+
+
+
 
 ## Program Counter
 
@@ -27,7 +30,6 @@ Registros ↔ ALU
 - Incremento: PC + 4
 - Modificado por saltos y branches
 
----
 
 ## Registro de Estado
 
@@ -36,126 +38,81 @@ Registros ↔ ALU
   - Key Vault
   - Instrucciones de cifrado
 
----
 
-## Tipos de Instrucción
 
-### Tipo R (ALU)
+## Formatos de Instrucción
 
-Formato:
-[ opcode | rd | rs1 | rs2 | unused ]
+| Instrucción | Tipo | Descripción | Operación |Notas|
+|------------|------|------------|-----------|-|
+| ADD        | R    | Add        | `R[rd] = R[rs1] + R[rs2]` ||
+| SUB        | R    | Subtract   | `R[rd] = R[rs1] - R[rs2]` ||
+| AND        | R    | Bitwise AND | `R[rd] = R[rs1] & R[rs2]` ||
+| OR         | R    | Bitwise OR  | `R[rd] = R[rs1] \| R[rs2]` ||
+| XOR        | R    | Bitwise XOR | `R[rd] = R[rs1] ^ R[rs2]` ||
+| SLL        | R    | Shift Left Logical | `R[rd] = R[rs1] << R[rs2]` ||
+| SRL        | R    | Shift Right Logical | `R[rd] = R[rs1] >> R[rs2]` ||
+| MV | R | Move contents
+| LD       | I    | Load Word | `R[rd] = Mem[R[rs1] + offset]` ||
+| LIM | I | Load Immediate | `R[rd] = imm`||
+| STR      | S    | Store Word | `Mem[R[rs1] + offset] = R[rs2]` ||
+| BEQ        | B    | Branch if Equal | `if (R[rs1] == R[rs2]) PC = PC + offset` ||
+| BNE        | B    | Branch if Not Equal | `if (R[rs1] != R[rs2]) PC = PC + offset` ||
+| BGT        | B    | Branch if Greater Than | `if (R[rs1] > R[rs2]) PC = PC + offset` ||
+| BLT        | B    | Branch if Less Than | `if (R[rs1] < R[rs2]) PC = PC + offset` ||
+| BGE        | B    | Branch if Greater or Equal | `if (R[rs1] >= R[rs2]) PC = PC + offset` ||
+| BLE        | B    | Branch if Less or Equal | `if (R[rs1] <= R[rs2]) PC = PC + offset` ||
+| JMP        | J    | Jump | `PC = address` ||
+| CALL       | J    | Call Function | `R[RA] = PC + 4; PC = address` ||
+| RET        | J    | Return | `PC = R[RA]` ||
+| AUTH       | SEC  | Enable Secure Mode | `AUTH = 1` ||
+| LDK    | SEC  | Load 128-bit Key | `KeyVault[k] = {R[rs1], R[rs2], R[rs3], R[rs4]}` ||
+| ENC     | SEC  | Encrypt (TEA) | `Encrypt(R[rs1], R[rs2], k)` ||
+| DEC     | SEC  | Decrypt (TEA) | `Decrypt(R[rs1], R[rs2], k)` ||
 
-Instrucciones:
-- ADD rd, rs1, rs2
-- SUB rd, rs1, rs2
-- AND rd, rs1, rs2
-- OR rd, rs1, rs2
-- XOR rd, rs1, rs2
-- SLL rd, rs1, rs2
-- SRL rd, rs1, rs2
+## Encodificación de las instrucciones
 
----
+| Tipo | 15 | 14 | 13 | 12 | 11 | 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+|------|----|----|----|----|----|----|---|---|---|---|---|---|---|---|---|---|
+| R    |    | rs2 |  |  |  | rs1 |  |  |  | funct4 |  |  |  | opcode |  |  |
+| I    | imm |  |  |  |  |  |  |  | rd |  |  |  | mem | opcode |  |  |
+| S    | imm |  |  |  |  |  |  |  |  | rs1 |  |  |  | opcode |  |  |
+| B    |    |    | rs2 |  |  |  | rs1 |  |  |  | eq | funct2 |  | opcode |  |  |
+| J    | imm |  |  |  |  |  |  |  |  |  |  | funct2 |  | opcode |  |  |
 
-### Tipo I (Inmediatos / Memoria)
+### Opcodes de las instrucciones
 
-Formato:
-[ opcode | rd | rs1 | immediate ]
+| Instrucción (R) |   opcode | funct4 |
+|------------|-----------------|-------|
+| ADD        | 000    | 0000     |
+| SUB        | 000    | 0001     |
+| AND        | 000    | 0010     |
+| OR         | 000    | 0011     |
+| XOR        | 000    | 0100     |
+| SLL        | 000    | 0101     |
+| SLR        | 000    | 0110     |
+| MV         | 000    | 0111     |
 
-Instrucciones:
-- ADDI rd, rs1, imm
-- LOAD rd, offset(rs1)
+| Instrucción (I) | opcode | mem |
+|------------|--------|-----|
+| LD         | 001    | 1   |
+| LIM        | 001    | 0   |
 
----
+| Instrucción (S) | opcode |
+|------------|--------|
+| STR        | 010    |
 
-### Tipo Memoria (Store)
+| Instrucción (J) | opcode | funct2 |
+|------------|--------|--------|
+| JMP        | 100    | 00     |
+| CALL       | 100    | 01     |
+| RET        | 100    | 10     |
 
-Formato:
-[ opcode | rs2 | rs1 | offset ]
+| Instrucción (B) | opcode | funct2 | eq |
+|------------|--------|--------|----|
+| BEQ / BNE  | 011    | 00     | 0/1|
+| BGT / BGE  | 011    | 01     | 0/1|
+| BLT / BLE  | 011    | 10     | 0/1|
 
-Instrucciones:
-- STORE rs2, offset(rs1)
-
----
-
-### Tipo Branch (Control de flujo condicional)
-
-Formato:
-[ opcode | rs1 | rs2 | offset ]
-
-Instrucciones:
-- BEQ rs1, rs2, offset
-- BNE rs1, rs2, offset
-- BLT rs1, rs2, offset
-- BGE rs1, rs2, offset
-
----
-
-### Tipo Jump (Control de flujo incondicional)
-
-Formato:
-[ opcode | address ]
-
-Instrucciones:
-- JMP address
-- CALL address
-- RET
-
----
-
-### Tipo Seguridad (Vault / Cifrado)
-
-Formato:
-[ opcode | campos específicos ]
-
-Instrucciones:
-
-#### Autenticación
-- AUTH rs  
-Activa modo seguro (AUTH = 1)
-
-#### Manejo de llaves
-- LOADKEY k, rs1, rs2, rs3, rs4  
-Carga llave de 128 bits en el Key Vault
-
-#### Cifrado TEA
-- TEAENC rs1, rs2, k  
-Cifra bloque de 64 bits
-
-- TEADEC rs1, rs2, k  
-Descifra bloque de 64 bits
-
----
-## Instrucciones del codigo C a Assembly necesarias para el programa
-
-Categorias:
-- Acceso a Memoria 
-
-v0 = [v0], v1 = v[1] | LOAD o lw ; Lee una palabra de 32 bits desde una dirección de la memoria RAM (donde
- está el archivo) y la guarda en un registro de la ALU (ej. R1).
-
- v[0] = v0,  v[1] = v1  |  STORE o SW; Toma el resultado final almacenado en un registro de la ALU y lo escribe de vuelta en la memoria RAM.
-
- - Aritmetica Basica 
-
- sum += DELTA, + key[0] | ADD/ADDI; Suma el contenido de dos registros, o suma un registro con un valor constante inmediato (como el incremento de tu contador i).
-
- sum -= DELTA, v0 -= ... | SUB; Resta el valor de un registro de otro. Esencial para revertir las operaciones matemáticas en la función tea_decrypt.
-
- - Desplazamiento
-
- v1 << 4, v0 << 4 | SLLI (Shift Left Logical Immediate); Mueve todos los bits del registro hacia la izquierda una cantidad fija (en este caso, 4 posiciones). Introduce ceros a la derecha.
-
- v1 >> 5, v0 >> 5 | SRLI (Shift Right Logical Immediate); Mueve todos los bits hacia la derecha (5 posiciones). Esencial para la mezcla de datos que hace el algoritmo.
-
- - Operaciones Logicas
-
- ^ (ej. ... ^ (v1 + sum) ^ ...) | XOR (OR Exclusivo); Compara bit a bit dos registros. Si los bits son diferentes, da 1; si son iguales, da 0. Es la base de cualquier algoritmo criptográfico moderno.
-
- - Control de Flujo
-
- i < 32 | CMP (Compare) o SLTI (Set Less Than); Compara si tu registro contador (que lleva el valor de i) ha alcanzado el límite de 32 rondas.
-
- for (...) { ... } | BRANCH (ej. BLT Branch if Less Than); Si la comparación anterior indica que i es menor a 32, obliga al Program Counter (PC) a "saltar" hacia atrás y repetir las matemáticas.
 ## Key Vault
 
 - Memoria segura interna
