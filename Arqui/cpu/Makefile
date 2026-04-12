@@ -82,6 +82,32 @@ build_decoder:
 run_decoder: build_decoder
 	$(VVP) $(SIM_DIR)/decoder.vvp
 
+
+build_cu:
+	mkdir -p $(SIM_DIR)
+	$(IVERILOG) $(FLAGS) -o $(SIM_DIR)/control_unit.vvp \
+	$(SRC_DIR)/control_unit.sv \
+	$(TB_DIR)/tb_control_unit.sv
+
+run_cu: build_cu
+	$(VVP) $(SIM_DIR)/control_unit.vvp
+
+
+build_cua:
+	mkdir -p $(SIM_DIR)
+	$(IVERILOG) $(FLAGS) -o $(SIM_DIR)/cu_alu.vvp \
+	$(SRC_DIR)/cu_alu.sv \
+	$(SRC_DIR)/control_unit.sv \
+	$(SRC_DIR)/register_file.sv \
+	$(SRC_DIR)/alu.sv \
+	$(TB_DIR)/tb_cu_alu.sv
+
+# =========================
+# Run
+# =========================
+run_cua: build_cua
+	$(VVP) $(SIM_DIR)/cu_alu.vvp
+
 # =========================
 # LIMPIAR
 # =========================

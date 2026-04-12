@@ -14,7 +14,7 @@ module register_file (
 );
 
     // 8 registros de 32 bits
-    logic [31:0] registers [7:0];
+    logic [31:0] registers [15:0];
 
     // -------------------------
     // Lectura 
