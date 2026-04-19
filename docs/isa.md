@@ -1,174 +1,103 @@
-# ISA – RISC 32-bit con Extensiones de Seguridad
+# GAEM ISA Reference Sheet
+## Overview
+### Disposiciones Generales
+| Propiedad               | Valor   | Notas |
+| ----------------------- | ------- | ----- |
+| Ancho de Instruccion    | 32 bits |       |
+| Ancho de Palabra (WORD) | 32 bits |       |
+| Número de Registros     | 32      |       |
+| Alineado de Memoria     | 32      |       |
 
----
+## Formatos de Intrucción
 
-## Flujo general
+- **TIPO R**
 
-CPU → AUTH → habilita acceso seguro  
-CPU → KeyVault (solo instrucciones especiales)  
-CPU ↔ Memoria  
-CPU → TEA → Memoria  
-Registros ↔ ALU  
+    `[31:25 (funct7)][24:20 (rs2)][19:15 (rs1)][14:12 (funct3)][11:7 (rd)][6:0 (opcode)]`
 
----
+- **TIPO I**
 
-## Registros
+    `[31:20 (imm[11:0])][19:15 (rs1)][14:12 (funct3)][11:7 (rd)][6:0 (opcode)]`
 
-- 8 registros de propósito general (32 bits)
-- R0 = 0 (hardwired)
-- R6 = SP (stack pointer)
-- R7 = RA (return address)
+- **TIPO S**
 
----
+    `[11:5 (imm[11:5])][24:20 (rs2)][19:15 (rs1)][14:12 (funct3)][11:7 (imm[4:0])][6:0 (opcode)]`
 
-## Program Counter
+- **TIPO B**
 
-- PC de 32 bits
-- Incremento: PC + 4
-- Modificado por saltos y branches
+    `[31:25 (funct7)][24:20 (rs2)][19:15 (rs1)][14:12 (funct3)][11:7 (rd)][6:0 (opcode)]`
 
----
+- **TIPO U**
 
-## Registro de Estado
+    `[31:16 (imm[15:0])][14:12 (funct3)][11:7 (rd)][6:0 (opcode)][31:16 (imm[15:0])][14:12 (funct3)][11:7 (rd)][6:0 (opcode)]`
 
-- AUTH flag
-- Controla acceso a:
-  - Key Vault
-  - Instrucciones de cifrado
+- **TIPO SEC**
 
----
+    `[TBD][6:0 opcode]`
 
-## Tipos de Instrucción
+## Tabla de Instrucciones
 
-### Tipo R (ALU)
+| Instrucción | Nombre                       | Tipo  | Opcode    | funct3 | funct7    | Descripción                                      | Notas |
+| ----------- | ---------------------------- | ----- | --------- | ------ | --------- | ------------------------------------------------ | ----- |
+| `add`       | Adición                      | `R`   | `0000000` | `000`  | `0000000` | `R[rd] = R[rs1] + R[rs2]`                        |       |
+| `sub`       | Substracción                 | `R`   | `0000000` | `001`  | `0000000` | `R[rd] = R[rs1] - R[rs2]`                        |       |
+| `mul`       | Multiplicación               | `R`   | `0000000` | `000`  | `0000001` | `R[rd] = R[rs1] * R[rs2]`                        |       |
+| `div`       | División                     | `R`   | `0000000` | `001`  | `0000001` | `R[rd] = R[rs1] / R[rs2]`                        |       |
+| `rem`       | Módulo                       | `R`   | `0000000` | `010`  | `0000001` | `R[rd] = R[rs1] % R[rs2]`                        |       |
+| `and`       | AND bit a bit                | `R`   | `0000000` | `010`  | `0000000` | `R[rd] = R[rs1] & R[rs2]`                        |       |
+| `or`        | OR bit a bit                 | `R`   | `0000000` | `011`  | `0000000` | `R[rd] = R[rs1] \| R[rs2]`                       |       |
+| `xor`       | XOR bit a bit                | `R`   | `0000000` | `100`  | `0000000` | `R[rd] = R[rs1] ^ R[rs2]`                        |       |
+| `sll`       | Shift Left Lógico            | `R`   | `0000000` | `101`  | `0000000` | `R[rd] = R[rs1] << R[rs2]`                       |       |
+| `srl`       | Shift Right Lógico           | `R`   | `0000000` | `110`  | `0000000` | `R[rd] = R[rs1] >> R[rs2]`                       |       |
+| `addi`      | Adición Inmediata            | `I`   | `0000001` | `000`  |           | `R[rd] = R[rs1] + imm`                           |       |
+| `xori`      | XOR Inmediato                | `I`   | `0000001` | `001`  |           | `R[rd] = R[rs1] ^ imm`                           |       |
+| `slli`      | Shift Left Lógico Inmediato  | `I`   | `0000001` | `010`  |           | `R[rd] = R[rs1] << imm`                          |       |
+| `srli`      | Shift Right Lógico Inmediato | `I`   | `0000001` | `011`  |           | `R[rd] = R[rs1] >> imm`                          |       |
+| `lw`        | Cargar Palabra (WORD)        | `I`   | `0000001` | `100`  |           | `R[rd] = Mem[R[rs1] + offset]`                   |       |
+| `sw`        | Guardar Palabra (WORD)       | `S`   | `0000010` | `000`  |           | `Mem[R[rs1] + offset] = R[rs2]`                  |       |
+| `beq`       | Branch ==                    | `B`   | `0000100` | `000`  |           | `if (R[rs1] == R[rs2]) PC += offset`             |       |
+| `bne`       | Branch !=                    | `B`   | `0000100` | `001`  |           | `if (R[rs1] != R[rs2]) PC += offset`             |       |
+| `bgt`       | Branch >                     | `B`   | `0000100` | `010`  |           | `if (R[rs1] > R[rs2]) PC += offset`              |       |
+| `blt`       | Branch <                     | `B`   | `0000100` | `011`  |           | `if (R[rs1] < R[rs2]) PC += offset`              |       |
+| `bge`       | Branch >=                    | `B`   | `0000100` | `100`  |           | `if (R[rs1] >= R[rs2]) PC += offset`             |       |
+| `ble`       | Branch <=                    | `B`   | `0000100` | `101`  |           | `if (R[rs1] <= R[rs2]) PC += offset`             |       |
+| `b`         | Branch/Salto Incondicional   | `B`   | `0000100` | `110`  |           | `PC = address`                                   |       |
+| `luhw`      | Cargar inmediato superior    | `U`   | `0000011` | `000`  |           | `R[rd][31:16] = imm`                             |       |
+| `llhw`      | Cargar inmediato inferior    | `U`   | `0000011` | `001`  |           | `R[rd][15:0] = imm`                              |       |
+| `auth`      | Enable Secure Mode           | `SEC` | `0000101` | `XXX`  |           | `AUTH = 1`                                       | TBD   |
+| `ldK`       | Load 128-bit Key             | `SEC` | `0000101` | `XXX`  |           | `KeyVault[k] = {R[rs1], R[rs2], R[rs3], R[rs4]}` | TBD   |
+| `enc`       | Encrypt (TEA)                | `SEC` | `0000101` | `XXX`  |           | `Encrypt(R[rs1], R[rs2], k)`                     | TBD   |
+| `dec`       | Decrypt (TEA)                | `SEC` | `0000101` | `XXX`  |           | `Decrypt(R[rs1], R[rs2], k)`                     | TBD   |
 
-Formato:
-[ opcode | rd | rs1 | rs2 | unused ]
+## Pseudoinstrucciones
+| Pseudoinstrucción | Descomposición                            | Significado           |
+| ----------------- | ----------------------------------------- | --------------------- |
+| `nop`             | `addi zero, zero, 0`                      | Operacion nula        |
+| `li rd, imm`      | `luhw rd, imm[31:16]; llhw rd, imm[15:0]` | Cargar inmediato      |
+| `mv rd, rs`       | `addi rd, rs, 0`                          | Copiar registros      |
+| `call offset`     | `R[ra] = PC+4; PC += offset`              | Llamar subrutina      |
+| `ret`             | `PC = R[ra]`                              | Retornar de subrutina |
 
-Instrucciones:
-- ADD rd, rs1, rs2
-- SUB rd, rs1, rs2
-- AND rd, rs1, rs2
-- OR rd, rs1, rs2
-- XOR rd, rs1, rs2
-- SLL rd, rs1, rs2
-- SRL rd, rs1, rs2
+## Convención de Registros
 
----
+- 32 bits: 31 bits de contenido + 1 bit de signo (MSB)
 
-### Tipo I (Inmediatos / Memoria)
+Hay disponibles 32 registros distribuidos según el siguiente ABI:
 
-Formato:
-[ opcode | rd | rs1 | immediate ]
+| Registro  | Alias     | Uso                             | Guardado por     |
+| --------- | --------- | ------------------------------- | ---------------- |
+| `x0`      | `zero`    | Constante cero                  | --               |
+| `x1`      | `ra`      | Dirección de retorno            | Caller           |
+| `x2`      | `sp`      | Stack pointer                   | Callee           |
+| `x3-x9`   | `a0-a6`   | Argumentos/retorno de funciones | Caller           |
+| `x10-x19` | `s0-s9`   | Propósito general               | Callee           |
+| `x20`     | `sr`      | Registro de estado              | --               |
+| `x21-x25` | `t0-t4`   | Registros temporales            | Caller           |
+| `x26-x29` | `s10-s13` | Propósito general               | Callee           |
+| `x30`     | `delta`   | Delta constant (TEA)            | --               |
+| `x31`     | `vp`      | Vault Pointer                   | Callee (Tipo SE) |
 
-Instrucciones:
-- ADDI rd, rs1, imm
-- LOAD rd, offset(rs1)
+## Acceso a memoria
 
----
+## Inmediatos
 
-### Tipo Memoria (Store)
-
-Formato:
-[ opcode | rs2 | rs1 | offset ]
-
-Instrucciones:
-- STORE rs2, offset(rs1)
-
----
-
-### Tipo Branch (Control de flujo condicional)
-
-Formato:
-[ opcode | rs1 | rs2 | offset ]
-
-Instrucciones:
-- BEQ rs1, rs2, offset
-- BNE rs1, rs2, offset
-- BLT rs1, rs2, offset
-- BGE rs1, rs2, offset
-
----
-
-### Tipo Jump (Control de flujo incondicional)
-
-Formato:
-[ opcode | address ]
-
-Instrucciones:
-- JMP address
-- CALL address
-- RET
-
----
-
-### Tipo Seguridad (Vault / Cifrado)
-
-Formato:
-[ opcode | campos específicos ]
-
-Instrucciones:
-
-#### Autenticación
-- AUTH rs  
-Activa modo seguro (AUTH = 1)
-
-#### Manejo de llaves
-- LOADKEY k, rs1, rs2, rs3, rs4  
-Carga llave de 128 bits en el Key Vault
-
-#### Cifrado TEA
-- TEAENC rs1, rs2, k  
-Cifra bloque de 64 bits
-
-- TEADEC rs1, rs2, k  
-Descifra bloque de 64 bits
-
----
-
-## Key Vault
-
-- Memoria segura interna
-- 4 llaves de 128 bits
-- No accesible como memoria normal
-- Solo accesible mediante instrucciones
-
----
-
-## Modelo de Seguridad
-
-- AUTH requerido para:
-  - LOADKEY
-  - TEAENC
-  - TEADEC
-
-- Si AUTH = 0:
-  - Se genera excepción
-  - Se bloquea la instrucción
-
----
-
-## TEA (Tiny Encryption Algorithm)
-
-- Bloque: 64 bits
-- Llave: 128 bits
-- Rondas: 32
-- Constante: 0x9e3779b9
-
----
-
-## Ejecución
-
-- ALU: 1 ciclo
-- Memoria: etapa MEM
-- TEA: multi-cycle
-- Puede generar stall en pipeline
-
----
-
-## Notas
-
-- Arquitectura tipo RISC (load/store)
-- Seguridad integrada en hardware
-- Separación entre memoria normal y Key Vault
-- Diseño enfocado en eficiencia y protección de datos
+## Cifrado y Seguridad
