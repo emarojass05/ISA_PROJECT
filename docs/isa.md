@@ -119,7 +119,8 @@ Actualización de PC:
 `PC = PC + offset`
 
 Notas:
-- `rs1`, `rs2` son ignorados en `j` y `jal`
+- `rs1`, `rs2` son ignorados en `j`
+- `rs2` es utilizado en `jal`
 - `rs1` es utilizado en `jr`
 
 ---
@@ -172,7 +173,7 @@ Uso:
 | `bge`       | Branch >=                      | `B`   | `0000100` | `100`  |           | `if (R[rs1] >= R[rs2]) PC += offset` |       |
 | `ble`       | Branch <=                      | `B`   | `0000100` | `101`  |           | `if (R[rs1] <= R[rs2]) PC += offset` |       |
 | `j`         | Salto Incondicional            | `J`   | `0000111` | `000`  |           | `PC += offset`                       |       |
-| `jal`       | Saltar y enlazar               | `J`   | `0000111` | `001`  |           | `R[ra] = PC + 4; PC += offset`       |       |
+| `jal`       | Saltar y enlazar               | `J`   | `0000111` | `001`  |           | `R[rs2] = PC + 4; PC += offset`       |       |
 | `jr`        | Saltar a contenido de registro | `J`   | `0000111` | `010`  |           | `PC = R[rs1]`                        |       |
 | `luhw`      | Cargar inmediato superior      | `U`   | `0000101` | `000`  |           | `R[rd][31:16] = imm`                 |       |
 | `llhw`      | Cargar inmediato inferior      | `U`   | `0000101` | `001`  |           | `R[rd][15:0] = imm`                  |       |
@@ -184,11 +185,11 @@ Uso:
 ## Pseudoinstrucciones
 | Pseudoinstrucción | Descomposición                            | Significado           |
 | ----------------- | ----------------------------------------- | --------------------- |
-| `nop`             | `addi zero, zero, 0`                      | Operacion nula        |
+| `nop`             | `addi x0, x0, 0`                          | Operacion nula        |
 | `li rd, imm`      | `luhw rd, imm[31:16]; llhw rd, imm[15:0]` | Cargar inmediato      |
 | `mv rd, rs`       | `addi rd, rs, 0`                          | Copiar registros      |
-| `call offset`     | `jal offset`                              | Llamar subrutina      |
-| `ret`             | `jr ra`                                   | Retornar de subrutina |
+| `call offset`     | `jal x1, offset`                          | Llamar subrutina      |
+| `ret`             | `jr x1`                                   | Retornar de subrutina |
 
 ## Convención de Registros
 
