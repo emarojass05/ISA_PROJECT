@@ -10,15 +10,16 @@ module alu #(
     output logic [XLEN-1:0] result,
 
     // flags (Z,N,C,V)
-    ouput logic [3:0] flags
+    output logic zero_fl, negative_fl, carry_fl, overflow_fl 
 );
 
     logic [XLEN:0] sum_ext; // extra bit for carry
 
     always_comb begin
-        result = '0;
-        sum_ext = '0;
-        flags  = 4'b0;
+        result      = '0;
+        sum_ext     = '0;
+        carry_fl    = 0;
+        overflow_fl = 0;
 
         unique case (alu_op)
 
@@ -26,10 +27,10 @@ module alu #(
             ALU_ADD: begin
                 sum_ext   = {1'b0, a} + {1'b0, b};
                 result   = sum_ext[XLEN-1:0];
-                flags[1] = sum_ext[XLEN];
+                carry_fl = sum_ext[XLEN];
 
                 // overflow: signs equal but result different
-                flags[0] = (!a[XLEN-1] && !b[XLEN-1] && result[XLEN-1]) ||
+                overflow_fl = (!a[XLEN-1] && !b[XLEN-1] && result[XLEN-1]) ||
                 (a[XLEN-1] && b[XLEN-1] && !result[XLEN-1]);
             end
 
@@ -37,10 +38,10 @@ module alu #(
             ALU_SUB: begin
                 sum_ext   = {1'b0, a} + {1'b0, ~b} + 1'b1;
                 result   = sum_ext[XLEN-1:0];
-                flags[1] = sum_ext[XLEN]; // borrow inverted
+                carry_fl = sum_ext[XLEN]; // borrow inverted
 
                 // overflow: signs differ and result sign wrong
-                flags[0] = (!a[XLEN-1] &&  b[XLEN-1] && result[XLEN-1]) ||
+                overflow_fl = (!a[XLEN-1] &&  b[XLEN-1] && result[XLEN-1]) ||
                 (a[XLEN-1] && !b[XLEN-1] && !result[XLEN-1]);
             end
 
@@ -65,7 +66,7 @@ module alu #(
     end
 
     // Static flags
-    assign flags[3] = (result == 0);
-    assign flags[2] = result[XLEN-1];
+    assign zero_fl = (result == 0);
+    assign negative_fl = result[XLEN-1];
 
 endmodule

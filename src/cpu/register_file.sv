@@ -1,5 +1,5 @@
 module register_file #(
-    parameter XLEN = 32;
+    parameter XLEN = 32
 )(
     input  logic clk,
 
@@ -21,8 +21,6 @@ module register_file #(
     // Hardwired registers
     parameter logic [4:0] R_ZERO  = 5'b00000;
     parameter logic [4:0] R_DELTA = 5'b11110;
-    registers[R_ZERO]  = 32'h0;
-    registers[R_DELTA] = 32'h9E3779B9;
 
     // Reading
     assign rd1 = registers[rs1];
@@ -30,6 +28,8 @@ module register_file #(
 
     // Writting
     always_ff @(negedge clk) begin
+        registers[R_ZERO]  = 32'h0;
+        registers[R_DELTA] = 32'h9E3779B9;
         if (we3 && (rs3 != R_ZERO && rs3 != R_DELTA)) begin
             registers[rs3] <= wd3;
         end

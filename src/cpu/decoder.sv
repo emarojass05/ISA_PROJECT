@@ -7,7 +7,7 @@ module decoder (
     output opcode_t opcode,
 
     // raw fields
-    output logic [2:0] funct3,
+    output funct3_t funct3,
     output logic [6:0] funct7,
     output logic [4:0] rs1,
     output logic [4:0] rs2,
@@ -16,15 +16,17 @@ module decoder (
     output logic [31:0] imm
 );
 
-    // Fields
-    always_comb begin
-        opcode = opcode_t'(instr[6:0]);
+    logic [4:0] rs1_raw;
 
-        rd     = instr[11:7];
-        funct3 = instr[14:12];
-        rs1    = instr[19:15];
-        rs2    = instr[24:20];
-        funct7 = instr[31:25];
+    // Field extraction
+    always_comb begin
+        opcode  = opcode_t'(instr[6:0]);
+
+        rd      = instr[11:7];
+        funct3  = funct3_t'(instr[14:12]);
+        rs1_raw = instr[19:15];
+        rs2     = instr[24:20];
+        funct7  = instr[31:25];
     end
 
     // Inmediate extension
@@ -37,21 +39,14 @@ module decoder (
                 imm = {{20{instr[31]}}, instr[31:20]};
             end
 
-            OP_STORE: begin
-                imm = {{20{instr[31]}}, instr[31:25], instr[11:7]};
-            end
-
-            OP_BRANCH: begin
-                imm = {{20{instr[31]}}, instr[31:25], instr[11:7]};
-            end
-
+            OP_STORE,
+            OP_BRANCH,
             OP_JUMP: begin
                 imm = {{20{instr[31]}}, instr[31:25], instr[11:7]};
             end
 
             OP_U: begin
                 imm = {16'b0, instr[31:16]};
-                rs1 = 5'b00000;
             end
 
             default: begin
@@ -61,4 +56,5 @@ module decoder (
         endcase
     end
 
+    assign rs1 = (opcode == OP_U) ? 5'b00000 : rs1_raw;
 endmodule
