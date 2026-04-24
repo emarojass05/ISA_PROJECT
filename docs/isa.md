@@ -138,6 +138,9 @@ Uso:
 - `luhw`: `R[rd][31:16] = imm`
 - `llhw`: `R[rd][15:0]  = imm`
 
+Notas:
+- `rd` es usado como `rs1` para la adecuada construcción de los inmediatos por medio de operaciones especiales de la alu para `llhw` y `luhw`.
+
 ---
 
 #### Resumen
