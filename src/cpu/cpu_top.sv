@@ -4,7 +4,7 @@ module cpu_top #(
     parameter int XLEN        = 32,
     parameter int IMEM_DEPTH  = 65536,
     parameter int DMEM_DEPTH  = 65536,
-    parameter string PROGRAM_FILE = "programs/program.hex"
+    parameter PROGRAM_FILE = "programs/program.hex"
 )(
     input  logic clk,
     input  logic rst
@@ -83,7 +83,8 @@ module cpu_top #(
     instr_mem #(
         .XLEN(XLEN),
         .DEPTH(IMEM_DEPTH),
-        .PROGRAM_FILE(PROGRAM_FILE)
+        .PROGRAM_FILE("programs/program.hex")
+//        .PROGRAM_FILE(PROGRAM_FILE)
     ) u_imem (
         .pc(pc_cur),
         .instruction(instr)
@@ -159,8 +160,8 @@ module cpu_top #(
     );
 
     // Write-back mux
-    always_comb begin
-        unique case (wb_src)
+    always @(*) begin
+        case (wb_src)
             WB_ALU:  wb_data = alu_result;
             WB_MEM:  wb_data = mem_rdata;
             WB_PC4:  wb_data = pc_plus4;
@@ -169,8 +170,8 @@ module cpu_top #(
     end
 
     // PC select mux
-    always_comb begin
-        unique case (pc_src)
+    always @(*) begin
+        case (pc_src)
             PC_PLUS4: pc_next = pc_plus4;
             PC_IMM:   pc_next = pc_imm;
             PC_JR:    pc_next = rs1_data;

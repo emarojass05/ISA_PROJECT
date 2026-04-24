@@ -17,7 +17,7 @@ module decoder #(
 );
 
     // Field extraction
-    always_comb begin
+    always @(*) begin
         opcode  = opcode_t'(instr[6:0]);
 
         rd     = instr[11:7];
@@ -28,10 +28,10 @@ module decoder #(
     end
 
     // Inmediate extension
-    always_comb begin
+    always @(*) begin
         imm = '0;
 
-        unique case (opcode)
+        case (opcode)
             OP_ALUI,
             OP_LOAD: begin
                 imm = {{20{instr[31]}}, instr[31:20]};
@@ -44,7 +44,7 @@ module decoder #(
             end
 
             OP_U: begin
-                unique case (funct3)
+                case (funct3)
                     F3_LUHW: imm = {instr[31:16], 16'b0};
                     F3_LLHW: imm = {16'b0, instr[31:16]};
                     default: imm = '0;

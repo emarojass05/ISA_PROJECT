@@ -18,7 +18,7 @@ module control_unit (
     output alu_op_t alu_op
 );
 
-    always_comb begin
+    always @(*) begin
         // default values
         pc_src    = PC_PLUS4;
         reg_write = 0;
@@ -29,14 +29,14 @@ module control_unit (
         u_load    = 1'b0;
         alu_op    = ALU_NONE;
 
-        unique case (opcode)
+        case (opcode)
 
             // R-type (ALU)
             OP_ALU: begin
                 reg_write = 1;
 
                 if (funct7 == 7'b0000000) begin
-                    unique case (funct3)
+                    case (funct3)
                         F3_ADD: alu_op = ALU_ADD;
                         F3_SUB: alu_op = ALU_SUB;
                         F3_AND: alu_op = ALU_AND;
@@ -47,7 +47,7 @@ module control_unit (
                         default: alu_op = ALU_NONE;
                     endcase
                 end else if (funct7 == 7'b0000001) begin
-                    unique case (funct3)
+                    case (funct3)
                         F3_MUL: alu_op = ALU_MUL;
                         F3_DIV: alu_op = ALU_DIV;
                         F3_REM: alu_op = ALU_REM;
@@ -61,7 +61,7 @@ module control_unit (
                 reg_write = 1;
                 alu_src   = 1;
 
-                unique case (funct3)
+                case (funct3)
                     F3_ADDI: alu_op = ALU_ADD; 
                     F3_XORI: alu_op = ALU_XOR; 
                     F3_SLLI: alu_op = ALU_SLL; 
@@ -89,7 +89,7 @@ module control_unit (
             OP_BRANCH: begin
                 alu_op = ALU_SUB;
 
-                unique case (funct3)
+                case (funct3)
                     F3_BEQ: if (zero_fl) pc_src = PC_IMM;
                     F3_BNE: if (!zero_fl) pc_src = PC_IMM;
                     F3_BLT: if (negative_fl != overflow_fl) pc_src = PC_IMM;
@@ -102,7 +102,7 @@ module control_unit (
             // JUMP
             OP_JUMP: begin
                 // jal writes return address
-                unique case (funct3)
+                case (funct3)
                     F3_J: begin
                         pc_src = PC_IMM;
                     end
@@ -129,7 +129,7 @@ module control_unit (
                 wb_src    = WB_ALU;
                 u_load    = 1'b1; 
 
-                unique case (funct3)
+                case (funct3)
                     F3_LUHW: alu_op = ALU_LUHW;
                     F3_LLHW: alu_op = ALU_LLHW;
                     default: alu_op = ALU_NONE;
@@ -139,6 +139,17 @@ module control_unit (
             // SEC 
             OP_SEC: begin
                 // TODO
+            end
+
+            default: begin
+                pc_src    = PC_PLUS4;
+                reg_write = 1'b0;
+                wb_src    = WB_ALU;
+                mem_write = 1'b0;
+                alu_src   = 1'b0;
+                jal       = 1'b0;
+                u_load    = 1'b0;
+                alu_op    = ALU_NONE;
             end
 
         endcase

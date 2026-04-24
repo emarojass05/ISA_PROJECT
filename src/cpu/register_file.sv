@@ -27,16 +27,16 @@ module register_file #(
     end
 
     // Read ports
-    always_comb begin
-        unique case (rs1)
+    always @(*) begin
+        case (rs1)
             R_ZERO:  rd1 = '0;
             R_DELTA: rd1 = 32'h9E37_79B9;
             default: rd1 = registers[rs1];
         endcase
     end
 
-    always_comb begin
-        unique case (rs2)
+    always @(*) begin
+        case (rs2)
             R_ZERO:  rd2 = '0;
             R_DELTA: rd2 = 32'h9E37_79B9;
             default: rd2 = registers[rs2];

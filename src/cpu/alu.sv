@@ -20,13 +20,13 @@ module alu #(
     assign signed_a = a;
     assign signed_b = b;
 
-    always_comb begin
+    always @(*) begin
         result      = '0;
         sum_ext     = '0;
         carry_fl    = 0;
         overflow_fl = 0;
 
-        unique case (alu_op)
+        case (alu_op)
 
             ALU_ADD: begin
                 sum_ext   = {1'b0, a} + {1'b0, b};
