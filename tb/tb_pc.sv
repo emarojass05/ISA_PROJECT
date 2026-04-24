@@ -1,61 +1,82 @@
 `timescale 1ns/1ps
 
-// -------------------------------------------------------------
-// Testbench del Program Counter
-// Verifica que el PC:
-// Se reinicie a 0 con reset
-// 4 en 4 en cada ciclo de reloj
-// -------------------------------------------------------------
-
 module tb_pc;
 
-    logic clk;
-    logic reset;
+    localparam int XLEN = 32;
 
-    logic [31:0] pc;
-    logic [31:0] next_pc;
+    logic            clk;
+    logic            rst;
+    logic [XLEN-1:0] next_pc;
+    logic [XLEN-1:0] pc;
 
-    // Instancias
-    program_counter pc_unit (
+    int errors;
+
+    pc #(
+        .XLEN(XLEN)
+    ) dut (
         .clk(clk),
-        .reset(reset),
+        .rst(rst),
         .next_pc(next_pc),
         .pc(pc)
     );
 
-    pc_adder adder (
-        .pc(pc),
-        .next_pc(next_pc)
-    );
-
-    // Clock
-    always #5 clk = ~clk;
-
     initial begin
-        clk = 0;
-        reset = 1;
-
-        // Dump para GTKWave
-        $dumpfile("sim/pc.vcd");
-        $dumpvars(0, tb_pc);
-
-        // -------------------------
-        // Reset activo
-        // -------------------------
-        #10;
-        reset = 0;
-
-        // -------------------------
-        // Dejar correr el PC
-        // -------------------------
-        #50;
-
-        $finish;
+        clk = 1'b0;
+        forever #5 clk = ~clk;
     end
 
-    // Mostrar PC en cada ciclo
-    always @(posedge clk) begin
-        $display("Tiempo=%0t | PC = %0d", $time, pc);
+    task automatic check_pc(
+        input logic [XLEN-1:0] expected_pc,
+        input string           test_name
+    );
+        begin
+            #1;
+
+            if (pc !== expected_pc) begin
+                $display("FAIL %-24s pc=%h expected=%h", test_name, pc, expected_pc);
+                errors++;
+            end else begin
+                $display("PASS %-24s pc=%h", test_name, pc);
+            end
+        end
+    endtask
+
+    initial begin
+        errors  = 0;
+        rst     = 1'b0;
+        next_pc = '0;
+
+        #2;
+
+        rst = 1'b1;
+        #1;
+        check_pc(32'h0000_0000, "async reset");
+
+        rst = 1'b0;
+
+        next_pc = 32'h0000_0004;
+        @(posedge clk);
+        check_pc(32'h0000_0004, "load pc 4");
+
+        next_pc = 32'h0000_0010;
+        @(posedge clk);
+        check_pc(32'h0000_0010, "load pc 16");
+
+        next_pc = 32'h1234_5678;
+        @(posedge clk);
+        check_pc(32'h1234_5678, "load arbitrary pc");
+
+        rst = 1'b1;
+        #1;
+        check_pc(32'h0000_0000, "reset after load");
+
+        if (errors == 0) begin
+            $display("PC TEST PASSED");
+        end else begin
+            $display("PC TEST FAILED: %0d error(s)", errors);
+        end
+
+        $finish;
     end
 
 endmodule
