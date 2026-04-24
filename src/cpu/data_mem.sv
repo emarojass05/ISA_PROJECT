@@ -13,6 +13,14 @@ module data_mem #(
     // Memory array
     logic [XLEN-1:0] memory [0:DEPTH-1];
 
+    integer i;
+
+    initial begin
+        for (i = 0; i < DEPTH; i = i + 1) begin
+            memory[i] = '0;
+        end
+    end
+
     // Word-aligned address
     logic [$clog2(DEPTH)-1:0] addr;
 

@@ -13,6 +13,7 @@ module control_unit (
     output logic mem_write,
     output logic alu_src,
     output logic jal,
+    output logic u_load,
     output wb_src_t wb_src,
     output alu_op_t alu_op
 );
@@ -25,6 +26,7 @@ module control_unit (
         mem_write = 0;
         alu_src   = 0;
         jal       = 0;
+        u_load    = 1'b0;
         alu_op    = ALU_NONE;
 
         unique case (opcode)
@@ -113,7 +115,10 @@ module control_unit (
                     F3_JR: begin
                         pc_src = PC_JR;
                     end
-                    default: 
+                    default: begin
+                        pc_src = PC_PLUS4; 
+                    end
+
                 endcase
             end
 
@@ -121,7 +126,14 @@ module control_unit (
             OP_U: begin
                 reg_write = 1;
                 alu_src   = 1;
-                alu_op    = ALU_ADD;
+                wb_src    = WB_ALU;
+                u_load    = 1'b1; 
+
+                unique case (funct3)
+                    F3_LUHW: alu_op = ALU_LUHW;
+                    F3_LLHW: alu_op = ALU_LLHW;
+                    default: alu_op = ALU_NONE;
+                endcase
             end
 
             // SEC 
