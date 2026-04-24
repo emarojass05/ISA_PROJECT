@@ -22,7 +22,7 @@ PROGRAMS_DIR = programs
 # =========================
 ISA_DEFS = $(CPU_SRC_DIR)/isa_defs.sv
 CPU_MODS = $(filter-out $(ISA_DEFS), $(wildcard $(CPU_SRC_DIR)/*.sv))
-CPU_SRC = $(ISA_DEFS) $(CPU_SRC)
+CPU_SRC = $(ISA_DEFS) $(CPU_MODS)
 
 # =========================
 # Default
@@ -37,7 +37,7 @@ help:
 	@grep -E '^[a-zA-Z0-9_%-.]+:.*?## ' $(MAKEFILE_LIST) | \
 	awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
-sv-cbuild-%: $(CPU_SRC) $(TB_DIR)/tb_$*.sv ## Build single CPU module with it's testbench
+sv-cbuild-%: $(CPU_SRC) $(TB_DIR)/tb_%.sv ## Build single CPU module with it's testbench
 	mkdir -p $(SIM_BUILD)
 	$(IVERILOG) $(FLAGS) -s tb_$* -o $(SIM_BUILD)/$*.vvp $^
 
