@@ -35,6 +35,8 @@ module cpu_top #(
     logic mem_write;
     logic alu_src;
     logic jal;
+    logic branch;
+    logic branch_taken;
 
     // Register file
     logic [4:0]      rs1_addr;
@@ -119,16 +121,13 @@ module cpu_top #(
         .opcode(opcode),
         .funct3(funct3),
         .funct7(funct7),
-        .zero_fl(Z),
-        .negative_fl(N),
-        .carry_fl(C),
-        .overflow_fl(V),
         .pc_src(pc_src),
         .reg_write(reg_write),
         .mem_write(mem_write),
         .alu_src(alu_src),
         .jal(jal),
         .u_load(u_load),
+        .branch(branch),
         .wb_src(wb_src),
         .alu_op(alu_op)
     );
@@ -146,6 +145,23 @@ module cpu_top #(
         .carry_fl(C),
         .overflow_fl(V)
     );
+
+    // Branching
+    always @(*) begin
+        branch_taken = 1'b0;
+
+        if (branch) begin
+            case (funct3)
+                F3_BEQ: branch_taken = Z;
+                F3_BNE: branch_taken = !Z;
+                F3_BLT: branch_taken = (N != V);
+                F3_BGT: branch_taken = (!Z && (N == V));
+                F3_BGE: branch_taken = (N == V);
+                F3_BLE: branch_taken = (Z || (N != V));
+                default: branch_taken = 1'b0;
+            endcase
+        end
+    end
 
     // Data memory
     data_mem #(
@@ -170,13 +186,17 @@ module cpu_top #(
     end
 
     // PC select mux
-    always @(*) begin
-        case (pc_src)
-            PC_PLUS4: pc_next = pc_plus4;
-            PC_IMM:   pc_next = pc_imm;
-            PC_JR:    pc_next = rs1_data;
-            default:  pc_next = pc_plus4;
-        endcase
+    always @* begin
+        if (branch_taken) begin
+                pc_next = pc_imm;
+        end else begin
+            case (pc_src)
+                PC_PLUS4: pc_next = pc_plus4;
+                PC_IMM:   pc_next = pc_imm;
+                PC_JR:    pc_next = rs1_data;
+                default:  pc_next = pc_plus4;
+            endcase
+        end
     end
 
 endmodule
