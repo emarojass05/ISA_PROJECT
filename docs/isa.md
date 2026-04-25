@@ -147,41 +147,44 @@ Uso:
 
 ## Tabla de Instrucciones
 
-| Instrucción | Nombre                         | Tipo  | Opcode    | funct3 | funct7    | Descripción                          | Notas |
-| ----------- | ------------------------------ | ----- | --------- | ------ | --------- | ------------------------------------ | ----- |
-| `add`       | Adición                        | `R`   | `0000000` | `000`  | `0000000` | `R[rd] = R[rs1] + R[rs2]`            |       |
-| `sub`       | Substracción                   | `R`   | `0000000` | `001`  | `0000000` | `R[rd] = R[rs1] - R[rs2]`            |       |
-| `mul`       | Multiplicación                 | `R`   | `0000000` | `000`  | `0000001` | `R[rd] = R[rs1] * R[rs2]`            |       |
-| `div`       | División                       | `R`   | `0000000` | `001`  | `0000001` | `R[rd] = R[rs1] / R[rs2]`            |       |
-| `rem`       | Módulo                         | `R`   | `0000000` | `010`  | `0000001` | `R[rd] = R[rs1] % R[rs2]`            |       |
-| `and`       | AND bit a bit                  | `R`   | `0000000` | `010`  | `0000000` | `R[rd] = R[rs1] & R[rs2]`            |       |
-| `or`        | OR bit a bit                   | `R`   | `0000000` | `011`  | `0000000` | `R[rd] = R[rs1] \| R[rs2]`           |       |
-| `xor`       | XOR bit a bit                  | `R`   | `0000000` | `100`  | `0000000` | `R[rd] = R[rs1] ^ R[rs2]`            |       |
-| `sll`       | Shift Left Lógico              | `R`   | `0000000` | `101`  | `0000000` | `R[rd] = R[rs1] << R[rs2]`           |       |
-| `srl`       | Shift Right Lógico             | `R`   | `0000000` | `110`  | `0000000` | `R[rd] = R[rs1] >> R[rs2]`           |       |
-| `addi`      | Adición Inmediata              | `I`   | `0000001` | `000`  |           | `R[rd] = R[rs1] + imm`               |       |
-| `xori`      | XOR Inmediato                  | `I`   | `0000001` | `001`  |           | `R[rd] = R[rs1] ^ imm`               |       |
-| `slli`      | Shift Left Lógico Inmediato    | `I`   | `0000001` | `010`  |           | `R[rd] = R[rs1] << imm`              |       |
-| `srli`      | Shift Right Lógico Inmediato   | `I`   | `0000001` | `011`  |           | `R[rd] = R[rs1] >> imm`              |       |
-| `sw`        | Guardar Palabra (WORD)         | `S`   | `0000010` | `000`  |           | `Mem[R[rs1] + offset] = R[rs2]`      |       |
-| `lw`        | Cargar Palabra (WORD)          | `I`   | `0000011` | `100`  |           | `R[rd] = Mem[R[rs1] + offset]`       |       |
-| `beq`       | Branch ==                      | `B`   | `0000100` | `000`  |           | `if (R[rs1] == R[rs2]) PC += offset` |       |
-| `bne`       | Branch !=                      | `B`   | `0000100` | `001`  |           | `if (R[rs1] != R[rs2]) PC += offset` |       |
-| `bgt`       | Branch >                       | `B`   | `0000100` | `010`  |           | `if (R[rs1] > R[rs2]) PC += offset`  |       |
-| `blt`       | Branch <                       | `B`   | `0000100` | `011`  |           | `if (R[rs1] < R[rs2]) PC += offset`  |       |
-| `bge`       | Branch >=                      | `B`   | `0000100` | `100`  |           | `if (R[rs1] >= R[rs2]) PC += offset` |       |
-| `ble`       | Branch <=                      | `B`   | `0000100` | `101`  |           | `if (R[rs1] <= R[rs2]) PC += offset` |       |
-| `j`         | Salto Incondicional            | `J`   | `0000111` | `000`  |           | `PC += offset`                       |       |
-| `jal`       | Saltar y enlazar               | `J`   | `0000111` | `001`  |           | `R[ra] = PC + 4; PC += offset`       |       |
-| `jr`        | Saltar a contenido de registro | `J`   | `0000111` | `010`  |           | `PC = R[rs1]`                        |       |
-| `luhw`      | Cargar inmediato superior      | `U`   | `0000101` | `000`  |           | `R[rd][31:16] = imm`                 |       |
-| `llhw`      | Cargar inmediato inferior      | `U`   | `0000101` | `001`  |           | `R[rd][15:0] = imm`                  |       |
-| `auth`      | Enable Secure Mode             | `SEC` | `0000110` | `000`  |           | `if (R[rs1] == SECRET) R[sr][0] = 1 else Exception()`                               
-| `ldK`       | Load 128-bit Key               | `SEC` | `0000110` | `001`  |           | `Vault[R[rs2]] =R[rs1]`                              
-| `enc0`       | Encrypt (TEA)                  | `010` | `0000110` | `010`  |           | `R[rd] = R[rd] + (((R[rs1] << 4) + K0) ^ (R[rs1] + R[rs2]) ^ ((R[rs1] >> 5) + K1))`                                
-| `enc1`       | Encrypt (TEA)                  | `011` | `0000110` | `011`  |           | `R[rd] = R[rd] + (((R[rs1] << 4) + K2) ^ (R[rs1] + R[rs2]) ^ ((R[rs1] >> 5) + K3))`                               
-| `dec0`       | Decrypt (TEA)                  | `100` | `0000110` | `100`  |           | `R[rd] = R[rd] - (((R[rs1] << 4) + K0) ^ (R[rs1] + R[rs2]) ^ ((R[rs1] >> 5) + K1))`                                
-| `dec1`       | Decrypt (TEA)                  | `101` | `0000110` | `101`  |           | `R[rd] = R[rd] - (((R[rs1] << 4) + K2) ^ (R[rs1] + R[rs2]) ^ ((R[rs1] >> 5) + K3))`                              
+| Instrucción | Nombre                         | Tipo  | Opcode    | funct3 | funct7    | Descripción                                                                          | Notas |
+| ----------- | ------------------------------ | ----- | --------- | ------ | --------- | ------------------------------------------------------------------------------------ | ----- |
+| `add`       | Adición                        | `R`   | `0000000` | `000`  | `0000000` | `R[rd] = R[rs1] + R[rs2]`                                                            |       |
+| `sub`       | Substracción                   | `R`   | `0000000` | `001`  | `0000000` | `R[rd] = R[rs1] - R[rs2]`                                                            |       |
+| `mul`       | Multiplicación                 | `R`   | `0000000` | `000`  | `0000001` | `R[rd] = R[rs1] * R[rs2]`                                                            |       |
+| `div`       | División                       | `R`   | `0000000` | `001`  | `0000001` | `R[rd] = R[rs1] / R[rs2]`                                                            |       |
+| `rem`       | Módulo                         | `R`   | `0000000` | `010`  | `0000001` | `R[rd] = R[rs1] % R[rs2]`                                                            |       |
+| `and`       | AND bit a bit                  | `R`   | `0000000` | `010`  | `0000000` | `R[rd] = R[rs1] & R[rs2]`                                                            |       |
+| `or`        | OR bit a bit                   | `R`   | `0000000` | `011`  | `0000000` | `R[rd] = R[rs1] \| R[rs2]`                                                           |       |
+| `xor`       | XOR bit a bit                  | `R`   | `0000000` | `100`  | `0000000` | `R[rd] = R[rs1] ^ R[rs2]`                                                            |       |
+| `sll`       | Shift Left Lógico              | `R`   | `0000000` | `101`  | `0000000` | `R[rd] = R[rs1] << R[rs2]`                                                           |       |
+| `srl`       | Shift Right Lógico             | `R`   | `0000000` | `110`  | `0000000` | `R[rd] = R[rs1] >> R[rs2]`                                                           |       |
+| `addi`      | Adición Inmediata              | `I`   | `0000001` | `000`  |           | `R[rd] = R[rs1] + imm`                                                               |       |
+| `xori`      | XOR Inmediato                  | `I`   | `0000001` | `001`  |           | `R[rd] = R[rs1] ^ imm`                                                               |       |
+| `slli`      | Shift Left Lógico Inmediato    | `I`   | `0000001` | `010`  |           | `R[rd] = R[rs1] << imm`                                                              |       |
+| `srli`      | Shift Right Lógico Inmediato   | `I`   | `0000001` | `011`  |           | `R[rd] = R[rs1] >> imm`                                                              |       |
+| `sw`        | Guardar Palabra (WORD)         | `S`   | `0000010` | `000`  |           | `Mem[R[rs1] + offset] = R[rs2]`                                                      |       |
+| `lw`        | Cargar Palabra (WORD)          | `I`   | `0000011` | `100`  |           | `R[rd] = Mem[R[rs1] + offset]`                                                       |       |
+| `beq`       | Branch ==                      | `B`   | `0000100` | `000`  |           | `if (R[rs1] == R[rs2]) PC += offset`                                                 |       |
+| `bne`       | Branch !=                      | `B`   | `0000100` | `001`  |           | `if (R[rs1] != R[rs2]) PC += offset`                                                 |       |
+| `bgt`       | Branch >                       | `B`   | `0000100` | `010`  |           | `if (R[rs1] > R[rs2]) PC += offset`                                                  |       |
+| `blt`       | Branch <                       | `B`   | `0000100` | `011`  |           | `if (R[rs1] < R[rs2]) PC += offset`                                                  |       |
+| `bge`       | Branch >=                      | `B`   | `0000100` | `100`  |           | `if (R[rs1] >= R[rs2]) PC += offset`                                                 |       |
+| `ble`       | Branch <=                      | `B`   | `0000100` | `101`  |           | `if (R[rs1] <= R[rs2]) PC += offset`                                                 |       |
+| `j`         | Salto Incondicional            | `J`   | `0000111` | `000`  |           | `PC += offset`                                                                       |       |
+| `jal`       | Saltar y enlazar               | `J`   | `0000111` | `001`  |           | `R[ra] = PC + 4; PC += offset`                                                       |       |
+| `jr`        | Saltar a contenido de registro | `J`   | `0000111` | `010`  |           | `PC = R[rs1]`                                                                        |       |
+| `luhw`      | Cargar inmediato superior      | `U`   | `0000101` | `000`  |           | `R[rd][31:16] = imm`                                                                 |       |
+| `llhw`      | Cargar inmediato inferior      | `U`   | `0000101` | `001`  |           | `R[rd][15:0] = imm`                                                                  |       |
+| `auth`      | Enable Secure Mode             | `SEC` | `0000110` | `000`  |           | `if (R[rs1] == SECRET) R[sr][0] = 1 else Exception()`                                |       |
+| `ldK`       | Load 128-bit Key               | `SEC` | `0000110` | `001`  |           | `Vault[R[rs2]] = R[rs1]`                                                             |       |
+| `enc0`      | Encrypt (TEA)                  | `SEC` | `0000110` | `010`  |           | `R[rd] = R[rd] + (((R[rs1] << 4) + K0) ^ (R[rs1] + R[rs2]) ^ ((R[rs1] >> 5) + K1))` |       |
+| `enc1`      | Encrypt (TEA)                  | `SEC` | `0000110` | `011`  |           | `R[rd] = R[rd] + (((R[rs1] << 4) + K2) ^ (R[rs1] + R[rs2]) ^ ((R[rs1] >> 5) + K3))` |       |
+| `dec0`      | Decrypt (TEA)                  | `SEC` | `0000110` | `100`  |           | `R[rd] = R[rd] - (((R[rs1] << 4) + K0) ^ (R[rs1] + R[rs2]) ^ ((R[rs1] >> 5) + K1))` |       |
+| `dec1`      | Decrypt (TEA)                  | `SEC` | `0000110` | `101`  |           | `R[rd] = R[rd] - (((R[rs1] << 4) + K2) ^ (R[rs1] + R[rs2]) ^ ((R[rs1] >> 5) + K3))` |       |
+| `sec.addk`  | Secure Add with Key            | `SEC` | `0000110` | `010`  | `0000001` | `R[rd] = R[rs1] + Vault[R[rs2]]`                                                     |       |
+| `sec.subK`  | Secure Sub with Key            | `SEC` | `0000110` | `011`  | `0000001` | `R[rd] = R[rs1] - Vault[R[rs2]]`                                                     |       |
+| `sec.xorK`  | Secure XOR with Key            | `SEC` | `0000110` | `100`  | `0000001` | `R[rd] = R[rs1] ^ Vault[R[rs2]]`                                                     |       |                      
 
 ## Pseudoinstrucciones
 | Pseudoinstrucción | Descomposición                            | Significado           |
