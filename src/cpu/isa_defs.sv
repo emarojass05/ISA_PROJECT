@@ -97,4 +97,68 @@ package isa_defs;
     localparam logic [4:0] R_SR    = 5'd20;
     localparam logic [4:0] R_DELTA = 5'd30;
     localparam logic [4:0] R_VP    = 5'd31;
+
+    // --- Pipeline Stage Registers (Structs) ---
+
+    // IF/ID Pipeline Register
+    typedef struct packed {
+        logic [31:0] pc;
+        logic [31:0] instr;
+        logic [31:0] pc_plus4;
+    } if_id_t;
+
+    // ID/EX Pipeline Register
+    typedef struct packed {
+        logic [31:0] pc;
+        logic [31:0] pc_plus4;
+        logic [31:0] rs1_data;
+        logic [31:0] rs2_data;
+        logic [31:0] k_out;       // Security key read from vault
+        logic [31:0] imm_ext;
+        logic [4:0]  rs1_addr;
+        logic [4:0]  rs2_addr;
+        logic [4:0]  rd_addr;
+        
+        // Control signals
+        pc_src_t     pc_src;
+        wb_src_t     wb_src;
+        alu_op_t     alu_op;
+        sec_op_t     sec_op;
+        logic        reg_write;
+        logic        mem_write;
+        logic        alu_src;
+        logic        branch;
+        logic        jal;
+        logic        vault_we;
+    } id_ex_t;
+
+    // EX/MEM Pipeline Register
+    typedef struct packed {
+        logic [31:0] alu_result;
+        logic [31:0] sec_result;  // Output from Secure ALU
+        logic [31:0] rs2_data;    // Data for Memory Store
+        logic [31:0] pc_plus4;
+        logic [31:0] pc_imm;      // Calculated branch target
+        logic [4:0]  rd_addr;
+        
+        // Control signals
+        wb_src_t     wb_src;
+        logic        reg_write;
+        logic        mem_write;
+        logic        vault_we;
+        logic        branch_taken;
+    } ex_mem_t;
+
+    // MEM/WB Pipeline Register
+    typedef struct packed {
+        logic [31:0] alu_result;
+        logic [31:0] sec_result;
+        logic [31:0] mem_rdata;
+        logic [31:0] pc_plus4;
+        logic [4:0]  rd_addr;
+        
+        // Control signals
+        wb_src_t     wb_src;
+        logic        reg_write;
+    } mem_wb_t;
 endpackage

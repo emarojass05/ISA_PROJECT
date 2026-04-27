@@ -7,7 +7,7 @@ module tb_cpu;
     logic rst;
 
     cpu_top #(
-        .PROGRAM_FILE("programs/program.hex")
+        .PROGRAM_FILE("programs/hex/program.hex")
     ) dut (
         .clk(clk),
         .rst(rst)
@@ -18,14 +18,14 @@ module tb_cpu;
 
     initial begin
         // VCD waveform dumping
-        $dumpfile("build/sim/ondas_cpu_ultimate.vcd");
+        $dumpfile("build/sim/ondas_cpu_pipeline.vcd");
         $dumpvars(0, tb_cpu);
         
         clk = 0;
         rst = 1;
 
         $display("===============================================================");
-        $display(" ULTIMATE TESTBENCH: FULL SECURITY COPROCESSOR VERIFICATION");
+        $display(" PIPELINE TESTBENCH: FULL SECURITY COPROCESSOR VERIFICATION");
         $display("===============================================================");
 
         #15 rst = 0;
@@ -46,11 +46,12 @@ module tb_cpu;
         dut.u_rf.registers[12] = 32'h00000001; // Data for TEA a
         dut.u_rf.registers[13] = 32'd64;       // Base address for RAM storage
         
-        // Real-time state monitor
-        $monitor("T: %0t | PC: %h | Auth: %b | Vault[0]: %h | Vault[1]: %h | Vault[2]: %h", 
-                 $time, dut.pc_cur, dut.auth_bit, dut.u_key_vault.vault[0], dut.u_key_vault.vault[1], dut.u_key_vault.vault[2]);
+        // Real-time state monitor (Updated to if_pc_cur for Pipeline)
+        $monitor("T: %0t | PC Fetch: %h | Auth: %b | Vault[0]: %h | Vault[1]: %h | Vault[2]: %h", 
+                 $time, dut.if_pc_cur, dut.auth_bit, dut.u_key_vault.vault[0], dut.u_key_vault.vault[1], dut.u_key_vault.vault[2]);
 
-        #150;
+        // Esperar suficiente tiempo para que el pipeline completo se vacíe
+        #400;
         $finish;
     end
 
