@@ -26,10 +26,21 @@ package isa_defs;
         ALU_NONE
     } alu_op_t;
 
+    // Security coprocessor operations
+    typedef enum logic [2:0] {
+        SEC_NONE,
+        SEC_AUTH,
+        SEC_LDK,
+        SEC_ADDK,
+        SEC_XORK,
+        SEC_TEA
+    } sec_op_t;
+
     typedef enum logic [1:0] {
         WB_ALU = 2'b00,
         WB_MEM = 2'b01,
-        WB_PC4 = 2'b10
+        WB_PC4 = 2'b10,
+        WB_SEC = 2'b11
     } wb_src_t;
 
     typedef logic [2:0] funct3_t;

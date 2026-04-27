@@ -46,7 +46,7 @@ module cpu_top #(
     logic [XLEN-1:0] wb_data;
     logic            we3;
 
-    // ALU
+    // Main ALU signals
     logic [XLEN-1:0] alu_b;
     logic [XLEN-1:0] alu_result;
     logic            Z;
@@ -54,12 +54,20 @@ module cpu_top #(
     logic            C;
     logic            V;
 
+    // Secure coprocessor signals
+    sec_op_t         sec_op;
+    logic            auth_bit;
+    logic [XLEN-1:0] k_out_wire;
+    logic [XLEN-1:0] sec_result_wire;
+    logic            sec_exception;
+    logic            vault_we;
+
+    assign vault_we = (sec_op == SEC_LDK);
+
     // Data memory
     logic [XLEN-1:0] mem_rdata;
 
     // U-type
-    logic u_load;
-
     assign rs1_addr = u_load ? rd : rs1;
 
     // jal
@@ -86,7 +94,6 @@ module cpu_top #(
         .XLEN(XLEN),
         .DEPTH(IMEM_DEPTH),
         .PROGRAM_FILE("programs/program.hex")
-//        .PROGRAM_FILE(PROGRAM_FILE)
     ) u_imem (
         .pc(pc_cur),
         .instruction(instr)
@@ -116,7 +123,7 @@ module cpu_top #(
         .we3(we3)
     );
 
-    // Control
+    // Control unit
     control_unit u_cu (
         .opcode(opcode),
         .funct3(funct3),
@@ -129,10 +136,58 @@ module cpu_top #(
         .u_load(u_load),
         .branch(branch),
         .wb_src(wb_src),
-        .alu_op(alu_op)
+        .alu_op(alu_op),
+        .sec_op(sec_op)
     );
 
-    // ALU
+    // Security state register (Guardian)
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            auth_bit <= 1'b0;
+        end else if (sec_op == SEC_AUTH) begin
+            if (rs1_data == 32'hDEADBEEF)
+                auth_bit <= 1'b1;
+            else
+                auth_bit <= 1'b0;
+        end
+    end
+
+    // Key vault module
+    key_vault #(
+        .XLEN(XLEN),
+        .KEYS(4),
+        .WORDS_PER_KEY(4)
+    ) u_key_vault (
+        .clk(clk),
+        .vault_we(vault_we),
+        .auth_en(auth_bit),
+        .addr(rs2_data[3:0]),
+        .wdata(rs1_data),
+        .k_out(k_out_wire)
+    );
+
+    // Secure ALU module
+    sec_alu #(
+        .XLEN(XLEN)
+    ) u_sec_alu (
+        .a(rs1_data),
+        .b(rs2_data),
+        .key(k_out_wire),
+        .sec_op(sec_op),
+        .auth_en(auth_bit),
+        .result(sec_result_wire),
+        .exception(sec_exception)
+    );
+
+    // Security exception handling
+    always_ff @(posedge clk) begin
+        if (sec_exception) begin
+            $display("SECURITY ERROR: Unauthorized operation or zero-attack detected.");
+            $fatal(1);
+        end
+    end
+
+    // Main ALU
     assign alu_b = alu_src ? imm_ext : rs2_data;
 
     alu #(.XLEN(XLEN)) u_alu (
@@ -146,7 +201,7 @@ module cpu_top #(
         .overflow_fl(V)
     );
 
-    // Branching
+    // Branching logic
     always @(*) begin
         branch_taken = 1'b0;
 
@@ -181,6 +236,7 @@ module cpu_top #(
             WB_ALU:  wb_data = alu_result;
             WB_MEM:  wb_data = mem_rdata;
             WB_PC4:  wb_data = pc_plus4;
+            WB_SEC:  wb_data = sec_result_wire;
             default: wb_data = '0;
         endcase
     end

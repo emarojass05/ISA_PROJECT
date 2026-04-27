@@ -13,7 +13,8 @@ module control_unit (
     output logic       u_load,
     output logic       branch,
     output wb_src_t    wb_src,
-    output alu_op_t    alu_op
+    output alu_op_t    alu_op,
+    output sec_op_t    sec_op
 );
 
     always @(*) begin
@@ -26,6 +27,7 @@ module control_unit (
         branch    = 1'b0;
         wb_src    = WB_ALU;
         alu_op    = ALU_NONE;
+        sec_op    = SEC_NONE;
 
         case (opcode)
 
@@ -137,9 +139,35 @@ module control_unit (
                 endcase
             end
 
-            // Security placeholder
+            // Security extension
             OP_SEC: begin
                 alu_op = ALU_NONE;
+                case (funct3)
+                    3'b000: begin
+                        sec_op    = SEC_AUTH;
+                        reg_write = 1'b0;
+                    end
+                    3'b001: begin
+                        sec_op    = SEC_LDK;
+                        reg_write = 1'b0;
+                    end
+                    3'b010: begin
+                        sec_op    = SEC_ADDK;
+                        reg_write = 1'b1;
+                        wb_src    = WB_SEC;
+                    end
+                    3'b011: begin
+                        sec_op    = SEC_XORK;
+                        reg_write = 1'b1;
+                        wb_src    = WB_SEC;
+                    end
+                    3'b100: begin
+                        sec_op    = SEC_TEA;
+                        reg_write = 1'b1;
+                        wb_src    = WB_SEC;
+                    end
+                    default: sec_op = SEC_NONE;
+                endcase
             end
 
             default: begin
