@@ -4,7 +4,7 @@ module cpu_top #(
     parameter int XLEN        = 32,
     parameter int IMEM_DEPTH  = 65536,
     parameter int DMEM_DEPTH  = 65536,
-    parameter PROGRAM_FILE = "programs/program.hex"
+    parameter PROGRAM_FILE = "programs/hex/program.hex"
 )(
     input  logic clk,
     input  logic rst
@@ -85,7 +85,7 @@ module cpu_top #(
     instr_mem #(
         .XLEN(XLEN),
         .DEPTH(IMEM_DEPTH),
-        .PROGRAM_FILE("programs/program.hex")
+        .PROGRAM_FILE("programs/hex/program.hex")
 //        .PROGRAM_FILE(PROGRAM_FILE)
     ) u_imem (
         .pc(pc_cur),

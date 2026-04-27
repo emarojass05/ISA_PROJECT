@@ -1,7 +1,7 @@
 module instr_mem #(
     parameter int XLEN = 32,
     parameter int DEPTH = 65536,
-    parameter string PROGRAM_FILE = "programs/program.hex"
+    parameter string PROGRAM_FILE = "programs/hex/program.hex"
 )(
     input  logic [XLEN-1:0] pc,
     output logic [31:0] instruction

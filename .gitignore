@@ -41,3 +41,33 @@ out/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# =========================
+# Compiler / frontend outputs
+# =========================
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*__init__.py
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# ANTLR generated artifacts
+src/compiler/generated/
+*.tokens
+*.interp
+
+# Temporary compiler/debug dumps
+*.ast
+*.parse
+*.sym
+*.cfg
+*.ssa
