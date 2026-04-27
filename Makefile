@@ -28,6 +28,10 @@ GENERATED_DIR =src/compiler/generated
 # =========================
 GRAMMAR =Language.g4
 FRC_COMPILER = src.compiler.main
+PYTHON = python3
+ASM_ENCODER = src/compiler/backend/encoder.py
+ASM_DIR = programs/asm
+HEX_DIR = programs/hex
 
 # =========================
 # CPU Modules
@@ -42,6 +46,8 @@ CPU_SRC = $(ISA_DEFS) $(CPU_MODS)
 # target: requisites preceeded by ## so targets
 # remain automatically documented
 # =================================================
+
+
 
 .PHONY: all help
 
@@ -74,3 +80,11 @@ frc-parse-%: antlr-build ## Parse .fr source file from programs/source
 	@touch src/compiler/__init__.py
 	@touch src/compiler/generated/__init__.py
 	python -m  $(FRC_COMPILER) $(FRC_SRC_DIR)/$*.fr
+
+
+asm-encode-%: ## Encode programs/asm/%.s and print hexadecimal output
+	$(PYTHON) $(ASM_ENCODER) $*
+
+asm-build-%: ## Encode programs/asm/%.s and save output into programs/hex/%.hex
+	@mkdir -p $(HEX_DIR)
+	$(PYTHON) $(ASM_ENCODER) $* > $(HEX_DIR)/$*.hex
