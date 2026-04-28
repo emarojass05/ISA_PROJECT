@@ -51,6 +51,11 @@ module cpu_top #(
     logic            id_vault_we;
     logic            auth_bit;
 
+    logic [6:0] id_funct7;      
+    funct3_t    id_funct3;
+    opcode_t    id_opcode;
+    logic       id_u_load;
+
     // Execute stage signals
     logic [XLEN-1:0] ex_alu_result;
     logic [XLEN-1:0] ex_sec_result;
@@ -206,10 +211,7 @@ module cpu_top #(
     // STAGE 2: INSTRUCTION DECODE (ID)
     // ========================================================================
     
-    logic [6:0] id_funct7;
-    funct3_t    id_funct3;
-    opcode_t    id_opcode;
-    logic       id_u_load;
+  
 
     decoder #(.XLEN(XLEN)) u_decoder (
         .instr(if_id_reg.instr),
