@@ -5,6 +5,7 @@
 IVERILOG = iverilog
 VVP = vvp
 FLAGS = -g2012
+GTK_WAVE = gtkwave
 
 # =========================
 # Folders
@@ -43,6 +44,9 @@ sv-cbuild-%: $(CPU_SRC) $(TB_DIR)/tb_%.sv ## Build single CPU module with it's t
 
 sv-run-%: sv-cbuild-% ## Run VPP for a specified .vvp output file
 	$(VVP) $(SIM_BUILD)/$*.vvp
+
+gtk-%: $(SIM_BUILD)/%.vcd ## Run %.vcd file from build/sim
+	gtkwave $^
 
 clear: ## Clear outputs folder(s)
 	rm -rf $(SIM_BUILD)
