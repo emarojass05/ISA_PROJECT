@@ -1,48 +1,47 @@
-#!/usr/bin/env python3
 import argparse
 import os
 
 def load_file(input_file, output_file, start_address):
     if not os.path.exists(input_file):
-        print(f"[ERROR] Archivo no encontrado: {input_file}")
+        print(f"[ERROR] File not found: {input_file}")
         return
 
-    # Leer archivo en binario
+    # Read file in binary mode
     with open(input_file, "rb") as f:
         data = f.read()
 
     size = len(data)
 
-    # Crear archivo .mem
+    # Create .mem file
     with open(output_file, "w") as f:
-        # Relleno hasta dirección base
+        # Padding up to base address
         for _ in range(start_address):
             f.write("00\n")
 
-        # Escribir bytes en hex
+        # Write bytes in hex format
         for byte in data:
             f.write(f"{byte:02X}\n")
 
     print("\n===== LOAD FILE =====")
-    print(f"Archivo entrada  : {input_file}")
-    print(f"Tamaño           : {size} bytes")
-    print(f"Dirección inicio : {hex(start_address)}")
-    print(f"Dirección final  : {hex(start_address + size - 1)}")
-    print(f"Archivo generado : {output_file}\n")
+    print(f"Input file      : {input_file}")
+    print(f"Size            : {size} bytes")
+    print(f"Start address   : {hex(start_address)}")
+    print(f"End address     : {hex(start_address + size - 1)}")
+    print(f"Generated file  : {output_file}\n")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Cargar archivo a memoria (.mem)")
-    parser.add_argument("--input", required=True, help="Archivo de entrada")
-    parser.add_argument("--output", required=True, help="Archivo .mem de salida")
-    parser.add_argument("--address", required=True, help="Dirección base (ej: 0x1000)")
+    parser = argparse.ArgumentParser(description="Load file into memory (.mem)")
+    parser.add_argument("--input", required=True, help="Input file")
+    parser.add_argument("--output", required=True, help="Output .mem file")
+    parser.add_argument("--address", required=True, help="Base address (e.g., 0x1000)")
 
     args = parser.parse_args()
 
     try:
         start_address = int(args.address, 16)
     except ValueError:
-        print("[ERROR] Dirección inválida. Use formato hexadecimal, ej: 0x1000")
+        print("[ERROR] Invalid address. Use hexadecimal format, e.g., 0x1000")
         return
 
     load_file(args.input, args.output, start_address)
