@@ -93,7 +93,7 @@ SEC_INSTRUCTIONS = {
     "dec",
 }
 
-REG_ALIASES = {
+REGISTER_ALIASES = {
     "zero": 0,
     "ra": 1,
     "sp": 2,
@@ -103,54 +103,54 @@ REG_ALIASES = {
 }
 
 for i in range(7):
-    REG_ALIASES[f"a{i}"] = i + 3
+    REGISTER_ALIASES[f"a{i}"] = i + 3
 
 for i in range(10):
-    REG_ALIASES[f"s{i}"] = i + 10
+    REGISTER_ALIASES[f"s{i}"] = i + 10
 
 for i in range(4):
-    REG_ALIASES[f"s{i + 10}"] = i + 26
+    REGISTER_ALIASES[f"s{i + 10}"] = i + 26
 
 for i in range(5):
-    REG_ALIASES[f"t{i}"] = i + 21
+    REGISTER_ALIASES[f"t{i}"] = i + 21
 
 
-def parse_reg(reg):
-    reg = reg.strip().lower()
+def parse_register(register):
+    register = register.strip().lower()
 
-    if reg in REG_ALIASES:
-        return REG_ALIASES[reg]
+    if register in REGISTER_ALIASES:
+        return REGISTER_ALIASES[register]
 
-    if not re.fullmatch(r"x\d+", reg):
-        raise ValueError(f"Registro inválido: {reg}")
+    if not re.fullmatch(r"x\d+", register):
+        raise ValueError(f"Invalid register: {register}")
 
-    num = int(reg[1:])
+    register_number = int(register[1:])
 
-    if not 0 <= num <= 31:
-        raise ValueError(f"Registro fuera de rango: {reg}")
+    if not 0 <= register_number <= 31:
+        raise ValueError(f"Register out of range: {register}")
 
-    return num
+    return register_number
 
 
-def parse_imm(value):
+def parse_immediate(value):
     value = value.strip()
     return int(value, 0)
 
 
 def check_range(value, bits, signed=False):
     if signed:
-        min_val = -(1 << (bits - 1))
-        max_val = (1 << (bits - 1)) - 1
+        min_value = -(1 << (bits - 1))
+        max_value = (1 << (bits - 1)) - 1
 
-        if not min_val <= value <= max_val:
-            raise ValueError(f"Inmediato {value} fuera de rango signed {bits}-bit")
+        if not min_value <= value <= max_value:
+            raise ValueError(f"Immediate {value} is out of signed {bits}-bit range")
 
         return value & ((1 << bits) - 1)
 
-    max_val = (1 << bits) - 1
+    max_value = (1 << bits) - 1
 
-    if not 0 <= value <= max_val:
-        raise ValueError(f"Inmediato {value} fuera de rango unsigned {bits}-bit")
+    if not 0 <= value <= max_value:
+        raise ValueError(f"Immediate {value} is out of unsigned {bits}-bit range")
 
     return value
 
@@ -171,7 +171,7 @@ def split_args(args):
 def expect_args(op, args, expected):
     if len(args) != expected:
         raise ValueError(
-            f"{op} espera {expected} argumento(s), recibió {len(args)}"
+            f"{op} expects {expected} argument(s), got {len(args)}"
         )
 
 
@@ -188,7 +188,7 @@ def remove_labels(line, labels=None, pc=None):
 
         if labels is not None:
             if label in labels:
-                raise ValueError(f"Etiqueta duplicada: {label}")
+                raise ValueError(f"Duplicate label: {label}")
 
             labels[label] = pc
 
@@ -226,8 +226,8 @@ def build_labels(source):
             instructions.append((line_number, line, pc))
             pc += instruction_count(line) * 4
 
-        except Exception as e:
-            raise ValueError(f"Error en línea {line_number}: {original_line}\n{e}")
+        except Exception as error:
+            raise ValueError(f"Error on line {line_number}: {original_line}\n{error}")
 
     return labels, instructions
 
@@ -236,27 +236,27 @@ def resolve_offset(token, labels, pc):
     token = token.strip()
 
     try:
-        return parse_imm(token)
+        return parse_immediate(token)
     except ValueError:
         pass
 
     if token not in labels:
-        raise ValueError(f"Etiqueta no encontrada: {token}")
+        raise ValueError(f"Label not found: {token}")
 
     return labels[token] - pc
 
 
-def parse_mem_operand(mem):
-    compact = mem.replace(" ", "")
-    match = re.fullmatch(r"(.+)\(([^()]+)\)", compact)
+def parse_memory_operand(memory_operand):
+    compact_operand = memory_operand.replace(" ", "")
+    match = re.fullmatch(r"(.+)\(([^()]+)\)", compact_operand)
 
     if not match:
-        raise ValueError(f"Formato de memoria inválido: {mem}")
+        raise ValueError(f"Invalid memory format: {memory_operand}")
 
-    imm = parse_imm(match.group(1))
-    rs1 = parse_reg(match.group(2))
+    immediate = parse_immediate(match.group(1))
+    rs1 = parse_register(match.group(2))
 
-    return imm, rs1
+    return immediate, rs1
 
 
 def encode_r_type(op, rd, rs1, rs2):
@@ -273,13 +273,13 @@ def encode_r_type(op, rd, rs1, rs2):
     )
 
 
-def encode_i_type(op, rd, rs1, imm):
+def encode_i_type(op, rd, rs1, immediate):
     opcode = OPCODES[op]
     funct3 = I_INFO[op]
-    imm = check_range(imm, 12, signed=True)
+    immediate = check_range(immediate, 12, signed=True)
 
     return (
-        (imm << 20)
+        (immediate << 20)
         | (rs1 << 15)
         | (funct3 << 12)
         | (rd << 7)
@@ -287,50 +287,50 @@ def encode_i_type(op, rd, rs1, imm):
     )
 
 
-def encode_s_like_type(opcode, funct3, rs2, rs1, imm):
-    imm = check_range(imm, 12, signed=True)
+def encode_s_like_type(opcode, funct3, rs2, rs1, immediate):
+    immediate = check_range(immediate, 12, signed=True)
 
-    imm_low = imm & 0b11111
-    imm_high = (imm >> 5) & 0b1111111
+    immediate_low = immediate & 0b11111
+    immediate_high = (immediate >> 5) & 0b1111111
 
     return (
-        (imm_high << 25)
+        (immediate_high << 25)
         | (rs2 << 20)
         | (rs1 << 15)
         | (funct3 << 12)
-        | (imm_low << 7)
+        | (immediate_low << 7)
         | opcode
     )
 
 
-def encode_s_type(op, rs2, rs1, imm):
+def encode_s_type(op, rs2, rs1, immediate):
     opcode = OPCODES[op]
     funct3 = S_INFO[op]
 
-    return encode_s_like_type(opcode, funct3, rs2, rs1, imm)
+    return encode_s_like_type(opcode, funct3, rs2, rs1, immediate)
 
 
-def encode_b_type(op, rs1, rs2, imm):
+def encode_b_type(op, rs1, rs2, immediate):
     opcode = OPCODES[op]
     funct3 = B_INFO[op]
 
-    return encode_s_like_type(opcode, funct3, rs2, rs1, imm)
+    return encode_s_like_type(opcode, funct3, rs2, rs1, immediate)
 
 
-def encode_j_type(op, rs1, rs2, imm):
+def encode_j_type(op, rs1, rs2, immediate):
     opcode = OPCODES[op]
     funct3 = J_INFO[op]
 
-    return encode_s_like_type(opcode, funct3, rs2, rs1, imm)
+    return encode_s_like_type(opcode, funct3, rs2, rs1, immediate)
 
 
-def encode_u_type(op, rd, imm):
+def encode_u_type(op, rd, immediate):
     opcode = OPCODES[op]
     funct3 = U_INFO[op]
-    imm = check_range(imm, 16, signed=False)
+    immediate = check_range(immediate, 16, signed=False)
 
     return (
-        (imm << 16)
+        (immediate << 16)
         | (funct3 << 12)
         | (rd << 7)
         | opcode
@@ -354,22 +354,22 @@ def encode_line(line, pc, labels):
 
     if op == "mv":
         expect_args(op, args, 2)
-        rd = parse_reg(args[0])
-        rs = parse_reg(args[1])
+        rd = parse_register(args[0])
+        rs = parse_register(args[1])
         return [encode_i_type("addi", rd, rs, 0)]
 
     if op == "li":
         expect_args(op, args, 2)
 
-        rd = parse_reg(args[0])
-        imm = parse_imm(args[1])
+        rd = parse_register(args[0])
+        immediate = parse_immediate(args[1])
 
-        if not -(1 << 31) <= imm <= (1 << 32) - 1:
-            raise ValueError(f"Inmediato {imm} fuera de rango de 32 bits")
+        if not -(1 << 31) <= immediate <= (1 << 32) - 1:
+            raise ValueError(f"Immediate {immediate} is out of 32-bit range")
 
-        imm32 = imm & 0xFFFFFFFF
-        upper = (imm32 >> 16) & 0xFFFF
-        lower = imm32 & 0xFFFF
+        immediate_32 = immediate & 0xFFFFFFFF
+        upper = (immediate_32 >> 16) & 0xFFFF
+        lower = immediate_32 & 0xFFFF
 
         return [
             encode_u_type("luhw", rd, upper),
@@ -379,51 +379,51 @@ def encode_line(line, pc, labels):
     if op == "call":
         expect_args(op, args, 1)
         offset = resolve_offset(args[0], labels, pc)
-        return [encode_j_type("jal", 0, parse_reg("x1"), offset)]
+        return [encode_j_type("jal", 0, parse_register("x1"), offset)]
 
     if op == "ret":
         expect_args(op, args, 0)
-        return [encode_j_type("jr", parse_reg("x1"), 0, 0)]
+        return [encode_j_type("jr", parse_register("x1"), 0, 0)]
 
     if op in R_INFO:
         expect_args(op, args, 3)
 
-        rd = parse_reg(args[0])
-        rs1 = parse_reg(args[1])
-        rs2 = parse_reg(args[2])
+        rd = parse_register(args[0])
+        rs1 = parse_register(args[1])
+        rs2 = parse_register(args[2])
 
         return [encode_r_type(op, rd, rs1, rs2)]
 
     if op in I_INFO and op != "lw":
         expect_args(op, args, 3)
 
-        rd = parse_reg(args[0])
-        rs1 = parse_reg(args[1])
-        imm = parse_imm(args[2])
+        rd = parse_register(args[0])
+        rs1 = parse_register(args[1])
+        immediate = parse_immediate(args[2])
 
-        return [encode_i_type(op, rd, rs1, imm)]
+        return [encode_i_type(op, rd, rs1, immediate)]
 
     if op == "lw":
         expect_args(op, args, 2)
 
-        rd = parse_reg(args[0])
-        imm, rs1 = parse_mem_operand(args[1])
+        rd = parse_register(args[0])
+        immediate, rs1 = parse_memory_operand(args[1])
 
-        return [encode_i_type(op, rd, rs1, imm)]
+        return [encode_i_type(op, rd, rs1, immediate)]
 
     if op == "sw":
         expect_args(op, args, 2)
 
-        rs2 = parse_reg(args[0])
-        imm, rs1 = parse_mem_operand(args[1])
+        rs2 = parse_register(args[0])
+        immediate, rs1 = parse_memory_operand(args[1])
 
-        return [encode_s_type(op, rs2, rs1, imm)]
+        return [encode_s_type(op, rs2, rs1, immediate)]
 
     if op in B_INFO:
         expect_args(op, args, 3)
 
-        rs1 = parse_reg(args[0])
-        rs2 = parse_reg(args[1])
+        rs1 = parse_register(args[0])
+        rs2 = parse_register(args[1])
         offset = resolve_offset(args[2], labels, pc)
 
         return [encode_b_type(op, rs1, rs2, offset)]
@@ -438,7 +438,7 @@ def encode_line(line, pc, labels):
     if op == "jal":
         expect_args(op, args, 2)
 
-        rs2 = parse_reg(args[0])
+        rs2 = parse_register(args[0])
         offset = resolve_offset(args[1], labels, pc)
 
         return [encode_j_type(op, 0, rs2, offset)]
@@ -446,24 +446,24 @@ def encode_line(line, pc, labels):
     if op == "jr":
         expect_args(op, args, 1)
 
-        rs1 = parse_reg(args[0])
+        rs1 = parse_register(args[0])
 
         return [encode_j_type(op, rs1, 0, 0)]
 
     if op in U_INFO:
         expect_args(op, args, 2)
 
-        rd = parse_reg(args[0])
-        imm = parse_imm(args[1])
+        rd = parse_register(args[0])
+        immediate = parse_immediate(args[1])
 
-        return [encode_u_type(op, rd, imm)]
+        return [encode_u_type(op, rd, immediate)]
 
     if op in SEC_INSTRUCTIONS:
         raise ValueError(
-            f"La instrucción SEC '{op}' no tiene formato definido todavía en la ISA"
+            f"The SEC instruction '{op}' does not have a defined format in the ISA yet"
         )
 
-    raise ValueError(f"Instrucción no soportada: {op}")
+    raise ValueError(f"Unsupported instruction: {op}")
 
 
 def assemble(source):
@@ -477,8 +477,8 @@ def assemble(source):
             for encoded in encoded_list:
                 machine_code.append(f"{encoded & 0xFFFFFFFF:08x}")
 
-        except Exception as e:
-            raise ValueError(f"Error en línea {line_number}: {line}\n{e}")
+        except Exception as error:
+            raise ValueError(f"Error on line {line_number}: {line}\n{error}")
 
     return machine_code
 
@@ -507,8 +507,8 @@ def resolve_asm_file(program_name):
             return candidate
 
     raise FileNotFoundError(
-        "No se encontró el archivo ASM. Rutas probadas:\n"
-        + "\n".join(str(c) for c in candidates)
+        "ASM file was not found. Tried paths:\n"
+        + "\n".join(str(candidate) for candidate in candidates)
     )
 
 
@@ -516,8 +516,8 @@ def main():
     program_name = sys.argv[1] if len(sys.argv) >= 2 else None
     filename = resolve_asm_file(program_name)
 
-    with open(filename, "r", encoding="utf-8") as f:
-        source = f.read()
+    with open(filename, "r", encoding="utf-8") as file:
+        source = file.read()
 
     machine_code = assemble(source)
 
