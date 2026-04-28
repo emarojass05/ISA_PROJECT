@@ -18,7 +18,7 @@ module tb_cpu;
 
     initial begin
         // VCD waveform dumping
-        $dumpfile("build/sim/ondas_cpu_pipeline.vcd");
+        $dumpfile("build/sim/pipeline_cpu_waves.vcd");
         $dumpvars(0, tb_cpu);
         
         clk = 0;

@@ -172,7 +172,7 @@ module cpu_top #(
     // ========================================================================
 
     // PC select mux (Resolves branches from EX and jumps from ID)
-    always_comb begin
+    always @(*) begin
         if (ex_branch_taken) begin
             if_pc_next = ex_pc_imm;
         end else if (id_pc_src == PC_IMM) begin
@@ -292,7 +292,7 @@ module cpu_top #(
     logic            ex_Z, ex_N, ex_C, ex_V;
 
     // Resolve Forwarding Data from EX/MEM stage
-    always_comb begin
+    always @(*) begin
         case (ex_mem_reg.wb_src)
             WB_ALU:  forward_ex_mem_val = ex_mem_reg.alu_result;
             WB_SEC:  forward_ex_mem_val = ex_mem_reg.sec_result;
@@ -302,7 +302,7 @@ module cpu_top #(
     end
 
     // Forwarding MUX A (rs1)
-    always_comb begin
+    always @(*) begin
         case (forward_a)
             2'b10:   ex_forwarded_rs1 = forward_ex_mem_val;
             2'b01:   ex_forwarded_rs1 = wb_data; // From WB stage
@@ -311,7 +311,7 @@ module cpu_top #(
     end
 
     // Forwarding MUX B (rs2)
-    always_comb begin
+    always @(*) begin
         case (forward_b)
             2'b10:   ex_forwarded_rs2 = forward_ex_mem_val;
             2'b01:   ex_forwarded_rs2 = wb_data; // From WB stage
@@ -357,7 +357,7 @@ module cpu_top #(
     end
 
     // Branch Resolution
-    always_comb begin
+    always @(*) begin
         ex_branch_taken = 1'b0;
         if (id_ex_reg.branch) begin
             case (id_ex_funct3)
@@ -391,7 +391,7 @@ module cpu_top #(
     // STAGE 5: WRITE-BACK (WB)
     // ========================================================================
 
-    always_comb begin
+    always @(*) begin
         case (mem_wb_reg.wb_src)
             WB_ALU:  wb_data = mem_wb_reg.alu_result;
             WB_MEM:  wb_data = mem_wb_reg.mem_rdata;
