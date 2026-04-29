@@ -48,6 +48,7 @@ Desktop.ini
 
 # Python cache
 __pycache__/
+*.pyc
 *.py[cod]
 *$py.class
 .pytest_cache/
@@ -71,3 +72,6 @@ src/compiler/generated/
 *.sym
 *.cfg
 *.ssa
+
+# ANTLR4 JAR
+tools/*.jar
