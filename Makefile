@@ -59,6 +59,19 @@ help:
 	@grep -E '^[a-zA-Z0-9_%-.]+:.*?## ' $(MAKEFILE_LIST) | \
 	awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
+sv-cbuild-%: $(CPU_SRC) $(TB_DIR)/tb_%.sv ## Build single CPU module '%' from src/cpu with it's testbench
+	@mkdir -p $(SIM_BUILD)
+	$(IVERILOG) $(FLAGS) -s tb_$* -o $(SIM_BUILD)/$*.vvp $^
+
+sv-run-%: sv-cbuild-% ## Build %.vpp if not previously built and run it
+	$(VVP) $(SIM_BUILD)/$*.vvp
+
+sv-clear: ## Clear iverilog outputs folder(s)
+	@rm -rf $(SIM_BUILD)
+
+wave-%: $(SIM_BUILD)/%.vcd
+	@gtkwave $^
+
 setup: ## Create Python venv and install dependencies
 	python3 -m venv .venv
 	$(PYTHON) -m ensurepip --upgrade
@@ -72,16 +85,6 @@ antlr-download: ## Download pinned ANTLR tool
 check-env: ## Check ANTLR versions
 	$(PYTHON) -c "import importlib.metadata as m; print('antlr4-python3-runtime', m.version('antlr4-python3-runtime'))"
 	java -jar $(ANTLR_JAR) -version
-
-sv-cbuild-%: $(CPU_SRC) $(TB_DIR)/tb_%.sv ## Build single CPU module '%' from src/cpu with it's testbench
-	@mkdir -p $(SIM_BUILD)
-	$(IVERILOG) $(FLAGS) -s tb_$* -o $(SIM_BUILD)/$*.vvp $^
-
-sv-run-%: sv-cbuild-% ## Build %.vpp if not previously built and run it
-	$(VVP) $(SIM_BUILD)/$*.vvp
-
-sv-clear: ## Clear iverilog outputs folder(s)
-	@rm -rf $(SIM_BUILD)
 
 antlr-build: $(ANTLR_JAR) ## Build ANTLR modules
 	@mkdir -p $(GENERATED_DIR)

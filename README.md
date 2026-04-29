@@ -1,7 +1,9 @@
-# Proyecto Grupal I CE4301 - Arquitectura del Set de Instrucciones (ISA) Específica tipo RISC para Aplicacines de Seguridad Informática
+# Proyecto Grupal I CE4301
 
+Arquitectura del Set de Instrucciones (ISA) Específica tipo RISC para Aplicaciones de Seguridad Informática
 
-## Estructura del Proyecto
+# Estructura del Proyecto
+
 ```
 .
 ├── build
@@ -18,36 +20,32 @@
 ├── src
 │   ├── compiler # Compilador (CE1108)
 │   └── cpu # Implementación microarquitectura
-└── tb # Testbenches de la microarquitectura
+├── tb # Testbenches de la microarquitectura
+└── tools # Herramientas y paquetes (antlr)
 ```
 
-## Setup
+# Setup
+## Requisitos
 
-### Requisitos
-
-- Python 3
-- Java 17 o más reciente
-- curl
 - make
-
-#### Herramienta ANTLR
-
-Este proyecto usa una version de ANTLR fija para evitar conflictos en las versiones según el SO.
-
-Versión requerida:
-
-- ANTLR tool: 4.13.2
-- Python runtime: antlr4-python3-runtime==4.13.2
-
-**NOTA**: No usar los paquetes antlr4 del sistema.
-
-## Instalación
-
-```bash
-make setup
-make antlr-download
-make check-env
-```
+- iverilog
+- python3
+- gtkwave
 
 ## Compilación y Ejecución
 
+### Compilación de módulos
+
+Se puede usar el comando `make` en la raíz del repositorio para ver todos los targets disponibles. Los principales para la ejecución de lo relacionado al ISA y la microarquitectura son
+
+```
+make sv-run-<module>
+```
+
+Compilación de un módulo y ejecución de su testbench asociado.
+
+```
+make wave-<wavefile>
+```
+
+Abrir archivo .vcd con GTKWave
