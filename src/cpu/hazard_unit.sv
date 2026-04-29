@@ -1,40 +1,68 @@
 module hazard_unit (
-    // Inputs from Fetch and Decode stages
     input  logic [4:0] if_id_rs1,
     input  logic [4:0] if_id_rs2,
-    
-    // Inputs from Execute stage (Current instruction in flight)
-    input  logic [4:0] id_ex_rd,
-    input  logic       id_ex_mem_read, // High if the EX instruction is a LOAD
-    
-    // Input for control flow
-    input  logic       branch_taken,
 
-    // Outputs to control pipeline progress
-    output logic       pc_write,     // 0 to stall PC
-    output logic       if_id_write,  // 0 to stall IF/ID register
-    output logic       id_ex_flush   // 1 to clear control signals in EX (NOP)
+    input  logic       if_id_uses_rs1,
+    input  logic       if_id_uses_rs2,
+
+    input  logic [4:0] id_ex_rd,
+    input  logic       id_ex_reg_write,
+
+    input  logic [4:0] ex_mem_rd,
+    input  logic       ex_mem_reg_write,
+
+    input  logic       branch_taken,
+    input  logic       jump_taken,
+
+    output logic       pc_write,
+    output logic       if_id_write,
+    output logic       if_id_flush,
+    output logic       id_ex_flush
 );
 
+    logic id_ex_raw_hazard;
+    logic ex_mem_raw_hazard;
+    logic raw_hazard;
+
     always_comb begin
-        // Default values: Pipeline flows normally
+        id_ex_raw_hazard =
+            id_ex_reg_write &&
+            (id_ex_rd != 5'd0) &&
+            (
+                (if_id_uses_rs1 && (id_ex_rd == if_id_rs1)) ||
+                (if_id_uses_rs2 && (id_ex_rd == if_id_rs2))
+            );
+
+        ex_mem_raw_hazard =
+            ex_mem_reg_write &&
+            (ex_mem_rd != 5'd0) &&
+            (
+                (if_id_uses_rs1 && (ex_mem_rd == if_id_rs1)) ||
+                (if_id_uses_rs2 && (ex_mem_rd == if_id_rs2))
+            );
+
+        raw_hazard = id_ex_raw_hazard || ex_mem_raw_hazard;
+
         pc_write    = 1'b1;
         if_id_write = 1'b1;
+        if_id_flush = 1'b0;
         id_ex_flush = 1'b0;
 
-        // Load-use hazard detection
-        // If the instruction in EX is a Load and its destination is used by the next instruction
-        if (id_ex_mem_read && ((id_ex_rd == if_id_rs1) || (id_ex_rd == if_id_rs2))) begin
+        if (raw_hazard) begin
             pc_write    = 1'b0;
             if_id_write = 1'b0;
-            id_ex_flush = 1'b1; // Insert a bubble (NOP)
-        end
-
-        // Control hazard: Branch taken
-        // If we jump, we must discard the instruction currently being decoded
-        if (branch_taken) begin
-            if_id_write = 1'b1; // Allow the new branch target to enter
-            id_ex_flush = 1'b1; // Flush the instruction that was wrongly fetched
+            if_id_flush = 1'b0;
+            id_ex_flush = 1'b1;
+        end else if (branch_taken) begin
+            pc_write    = 1'b1;
+            if_id_write = 1'b1;
+            if_id_flush = 1'b1;
+            id_ex_flush = 1'b1;
+        end else if (jump_taken) begin
+            pc_write    = 1'b1;
+            if_id_write = 1'b1;
+            if_id_flush = 1'b1;
+            id_ex_flush = 1'b0;
         end
     end
 

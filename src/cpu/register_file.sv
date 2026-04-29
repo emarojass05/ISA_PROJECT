@@ -26,24 +26,46 @@ module register_file #(
         end
     end
 
-    // Read ports
-    always @(*) begin
+    always_comb begin
         case (rs1)
-            R_ZERO:  rd1 = '0;
-            R_DELTA: rd1 = 32'h9E37_79B9;
-            default: rd1 = registers[rs1];
+            R_ZERO: begin
+                rd1 = '0;
+            end
+
+            R_DELTA: begin
+                rd1 = 32'h9E37_79B9;
+            end
+
+            default: begin
+                if (we3 && (rs3 == rs1) && (rs3 != R_ZERO) && (rs3 != R_DELTA)) begin
+                    rd1 = wd3;
+                end else begin
+                    rd1 = registers[rs1];
+                end
+            end
         endcase
     end
 
-    always @(*) begin
+    always_comb begin
         case (rs2)
-            R_ZERO:  rd2 = '0;
-            R_DELTA: rd2 = 32'h9E37_79B9;
-            default: rd2 = registers[rs2];
+            R_ZERO: begin
+                rd2 = '0;
+            end
+
+            R_DELTA: begin
+                rd2 = 32'h9E37_79B9;
+            end
+
+            default: begin
+                if (we3 && (rs3 == rs2) && (rs3 != R_ZERO) && (rs3 != R_DELTA)) begin
+                    rd2 = wd3;
+                end else begin
+                    rd2 = registers[rs2];
+                end
+            end
         endcase
     end
 
-    // Write port
     always_ff @(negedge clk) begin
         if (we3 && (rs3 != R_ZERO) && (rs3 != R_DELTA)) begin
             registers[rs3] <= wd3;
