@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 
 from antlr4 import FileStream, CommonTokenStream
 from antlr4.error.ErrorListener import ErrorListener
@@ -372,12 +373,28 @@ def print_hex_code(hex_code):
         print(f"0x{address:04X}: {code}")
 
 
+def save_hex_code(hex_code, source_file):
+    output_dir = Path("build") / "bin"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    source_name = Path(source_file).stem
+    output_file = output_dir / f"{source_name}.hex"
+
+    with output_file.open("w", encoding="utf-8") as file:
+        for code in hex_code:
+            file.write(f"{code}\n")
+
+    return output_file
+
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python -m src.compiler.main <source_file.fr>")
         sys.exit(1)
 
-    result = parse_file(sys.argv[1])
+    source_file = sys.argv[1]
+
+    result = parse_file(source_file)
 
     if result is None:
         sys.exit(1)
@@ -418,6 +435,9 @@ def main():
     print(asm_source)
 
     print_hex_code(hex_code)
+
+    output_file = save_hex_code(hex_code, source_file)
+    print(f"\n[OK] HEX saved in {output_file}")
 
 
 if __name__ == "__main__":
