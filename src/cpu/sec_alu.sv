@@ -29,7 +29,6 @@ module sec_alu #(
         // Logical security barrier
         if (sec_op != SEC_NONE && sec_op != SEC_AUTH) begin
             if (!auth_en || zero_attack_detected) begin
-                exception = 1'b1;
                 result    = '0;
             end else begin
                 

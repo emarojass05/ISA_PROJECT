@@ -4,7 +4,8 @@ module cpu_top #(
     parameter int XLEN        = 32,
     parameter int IMEM_DEPTH  = 65536,
     parameter int DMEM_DEPTH  = 65536,
-    parameter PROGRAM_FILE    = "programs/hex/program.hex"
+    parameter PROGRAM_FILE = "programs/hex/program.hex",
+    parameter INITIAL_MEM = ""
 )(
     input  logic clk,
     input  logic rst
@@ -24,6 +25,7 @@ module cpu_top #(
     logic       id_ex_flush;
     logic [1:0] forward_a;
     logic [1:0] forward_b;
+    logic [XLEN-1:0] pc_next_stall;
 
     // Fetch stage signals
     logic [XLEN-1:0] if_pc_cur;
@@ -184,10 +186,12 @@ module cpu_top #(
         end
     end
 
+    assign pc_next_stall = pc_write ? if_pc_next : if_pc_cur;
+
     pc #(.XLEN(XLEN)) u_pc (
         .clk(clk),
-        .rst(rst || !pc_write), // Stall PC if hazard detected
-        .next_pc(if_pc_next),
+        .rst(rst),
+        .next_pc(pc_next_stall),
         .pc(if_pc_cur)
     );
 
@@ -201,7 +205,7 @@ module cpu_top #(
    instr_mem #(
         .XLEN(XLEN),
         .DEPTH(IMEM_DEPTH),
-        .PROGRAM_FILE("programs/hex/program.hex") // <--- TU SOLUCIÓN ORIGINAL
+        .PROGRAM_FILE(PROGRAM_FILE)
     ) u_imem (
         .pc(if_pc_cur),
         .instruction(if_instr)
@@ -378,7 +382,8 @@ module cpu_top #(
 
     data_mem #(
         .XLEN(XLEN),
-        .DEPTH(DMEM_DEPTH)
+        .DEPTH(DMEM_DEPTH),
+        .INITIAL_MEM(INITIAL_MEM)
     ) u_dmem (
         .clk(clk),
         .mem_write_enable(ex_mem_reg.mem_write),
