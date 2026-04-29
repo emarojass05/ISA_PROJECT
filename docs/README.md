@@ -120,7 +120,7 @@ SecuRISC-32/
 
 ---
 
-## ⚡ Compilación y ejecución rápida
+## Compilación y ejecución rápida
 
 ```bash
 # 1. Clonar el repositorio
