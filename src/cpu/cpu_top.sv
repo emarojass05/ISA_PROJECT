@@ -173,7 +173,9 @@ module cpu_top #(
 
     // PC select mux (Resolves branches from EX and jumps from ID)
     always @(*) begin
-        if (ex_branch_taken) begin
+        if (!pc_write) begin
+            if_pc_next = if_pc_cur; 
+        end else if (ex_branch_taken) begin
             if_pc_next = ex_pc_imm;
         end else if (id_pc_src == PC_IMM) begin
             if_pc_next = if_id_reg.pc + id_imm_ext;
@@ -186,7 +188,7 @@ module cpu_top #(
 
     pc #(.XLEN(XLEN)) u_pc (
         .clk(clk),
-        .rst(rst || !pc_write), // Stall PC if hazard detected
+        .rst(rst), 
         .next_pc(if_pc_next),
         .pc(if_pc_cur)
     );
@@ -201,7 +203,7 @@ module cpu_top #(
    instr_mem #(
         .XLEN(XLEN),
         .DEPTH(IMEM_DEPTH),
-        .PROGRAM_FILE("programs/hex/program.hex") // <--- TU SOLUCIÓN ORIGINAL
+        .PROGRAM_FILE("programs/hex/program.hex") 
     ) u_imem (
         .pc(if_pc_cur),
         .instruction(if_instr)

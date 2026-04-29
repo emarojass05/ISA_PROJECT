@@ -18,13 +18,24 @@ module sec_alu #(
 
     logic zero_attack_detected;
 
+    // --- SEÑALES INTERMEDIAS PARA DESCOMPONER TEA ---
+    logic [XLEN-1:0] tea_shift_l;
+    logic [XLEN-1:0] tea_shift_r;
+    logic [XLEN-1:0] tea_add_l;
+    logic [XLEN-1:0] tea_add_r;
+
     // Hardware defense: Zero-attack detection
     // Prevents extracting the raw key through identity operations
     assign zero_attack_detected = (a == '0) && (sec_op == SEC_ADDK || sec_op == SEC_XORK);
 
     always_comb begin
+        // Valores por defecto
         result    = '0;
         exception = 1'b0;
+        tea_shift_l = '0;
+        tea_shift_r = '0;
+        tea_add_l   = '0;
+        tea_add_r   = '0;
 
         // Logical security barrier
         if (sec_op != SEC_NONE && sec_op != SEC_AUTH) begin
@@ -45,8 +56,16 @@ module sec_alu #(
                     end
                     
                     SEC_TEA: begin
-                        // TEA core formula: ((v1<<4) + k0) ^ (v1 + sum) ^ ((v1>>5) + k1)
-                        result = ((a << 4) + key) ^ b ^ ((a >> 5) + key);
+                        // 1. Shifteos (Corrimientos lógicos)
+                        tea_shift_l = a << 4;
+                        tea_shift_r = a >> 5;
+
+                        // 2. Sumas con la llave secreta
+                        tea_add_l = tea_shift_l + key;
+                        tea_add_r = tea_shift_r + key;
+
+                        // 3. XOR final uniendo todo con la entrada 'b'
+                        result = tea_add_l ^ b ^ tea_add_r;
                     end
 
                     default: begin
