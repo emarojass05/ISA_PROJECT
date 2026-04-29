@@ -1,4 +1,6 @@
 class SymbolTable:
+    WORD_SIZE = 4
+
     def __init__(self):
         self.symbols = {}
         self.references = {}
@@ -24,13 +26,15 @@ class SymbolTable:
         self.current_scope = self.scope_stack[-1]
 
     def allocate_address(self, size=1):
+        byte_size = size * self.WORD_SIZE
+
         if self.current_scope == "global":
             address = self.next_global_address
-            self.next_global_address += size
+            self.next_global_address += byte_size
             return address
 
         address = self.next_local_address
-        self.next_local_address += size
+        self.next_local_address += byte_size
         return address
 
     def declare_variable(self, name, type_name, line, size=1):
@@ -38,7 +42,8 @@ class SymbolTable:
 
         if key in self.symbols:
             raise Exception(
-                f"Error line {line}: variable '{name}' already declared in scope '{self.current_scope}'"
+                f"Error line {line}: variable '{name}' already declared "
+                f"in scope '{self.current_scope}'"
             )
 
         address = self.allocate_address(size)
@@ -62,7 +67,8 @@ class SymbolTable:
 
         if key in self.symbols:
             raise Exception(
-                f"Error line {line}: parameter '{name}' already declared in scope '{self.current_scope}'"
+                f"Error line {line}: parameter '{name}' already declared "
+                f"in scope '{self.current_scope}'"
             )
 
         address = self.allocate_address()
@@ -85,9 +91,7 @@ class SymbolTable:
         key = ("global", name)
 
         if key in self.symbols:
-            raise Exception(
-                f"Error line {line}: function '{name}' already declared"
-            )
+            raise Exception(f"Error line {line}: function '{name}' already declared")
 
         self.symbols[key] = {
             "name": name,

@@ -6,12 +6,13 @@ from antlr4.error.ErrorListener import ErrorListener
 from src.compiler.generated.LanguageLexer import LanguageLexer
 from src.compiler.generated.LanguageParser import LanguageParser
 from src.compiler.generated.LanguageVisitor import LanguageVisitor
-from src.compiler.semantic.ControlFlowVisitor import ControlFlowVisitor
 
 from src.compiler.semantic.fixuptable import FixupTable
 from src.compiler.semantic.labeltable import LabelTable
 from src.compiler.semantic.symboltable import SymbolTable
+from src.compiler.semantic.asmgenerator import AsmGenerator
 
+from src.compiler.backend.encoder import assemble
 
 
 class CompilerErrorListener(ErrorListener):
@@ -334,10 +335,10 @@ def print_label_table(label_table):
         print("[empty]")
         return
 
-    print(f"{'Label':<25} {'Address'}")
+    print(f"{'Label':<30} {'Address'}")
 
     for label_name, address in labels.items():
-        print(f"{label_name:<25} {format_address(address)}")
+        print(f"{label_name:<30} {format_address(address)}")
 
 
 def print_fixup_table(fixup_table):
@@ -349,14 +350,26 @@ def print_fixup_table(fixup_table):
         print("[empty]")
         return
 
-    print(f"{'Instruction':<15} {'Label':<25} {'Jump Type'}")
+    print(f"{'Instruction':<15} {'Label':<30} {'Jump Type'}")
 
     for fixup in fixups:
         instruction_index = fixup.get("instruction_index", "-")
         label_name = fixup.get("label_name", "-")
         jump_type = fixup.get("jump_type", "-")
 
-        print(f"{instruction_index:<15} {label_name:<25} {jump_type}")
+        print(f"{instruction_index:<15} {label_name:<30} {jump_type}")
+
+
+def print_hex_code(hex_code):
+    print("\n========== HEX ==========")
+
+    if not hex_code:
+        print("[empty]")
+        return
+
+    for index, code in enumerate(hex_code):
+        address = index * 4
+        print(f"0x{address:04X}: {code}")
 
 
 def main():
@@ -379,14 +392,18 @@ def main():
         semantic_builder = SemanticTableBuilder(symbol_table)
         semantic_builder.visit(tree)
 
-        control_flow_visitor = ControlFlowVisitor(
+        asm_generator = AsmGenerator(
+            symbol_table=symbol_table,
             label_table=label_table,
             fixup_table=fixup_table
         )
-        control_flow_visitor.visit(tree)
+        asm_generator.visit(tree)
+
+        asm_source = asm_generator.get_asm()
+        hex_code = assemble(asm_source)
 
     except Exception as error:
-        print(f"[ERR](SEMANTIC) {error}")
+        print(f"[ERR](COMPILER) {error}")
         sys.exit(1)
 
     print("[OK] Parse completed")
@@ -396,6 +413,11 @@ def main():
     print_reference_table(symbol_table)
     print_label_table(label_table)
     print_fixup_table(fixup_table)
+
+    print("\n========== ASM ==========")
+    print(asm_source)
+
+    print_hex_code(hex_code)
 
 
 if __name__ == "__main__":
