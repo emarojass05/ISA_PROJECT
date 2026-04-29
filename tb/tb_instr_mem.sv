@@ -13,7 +13,7 @@ module tb_instr_mem;
     instr_mem #(
         .XLEN(XLEN),
         .DEPTH(DEPTH),
-        .PROGRAM_FILE("programs/test_instr_mem.hex")
+        .PROGRAM_FILE("programs/hex/test_instr_mem.hex")
     ) dut (
         .pc(pc),
         .instruction(instruction)

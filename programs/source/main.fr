@@ -1,0 +1,23 @@
+$ Simple function
+fonc [int] sum([int] a, [int] b) {
+    ret a + b;
+}
+
+$ Main function
+fonc [int] main() {
+    $ Variable declaration
+    [int] x = 10;
+
+
+    $ Control structure
+    si (x > 5) {
+        x++;
+    } sinon {
+        x--;
+    }
+
+    $ Loop
+    alors (x < 20) {
+        x = x + 2;
+    }
+}
