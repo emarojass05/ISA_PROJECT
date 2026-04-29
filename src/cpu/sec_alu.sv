@@ -56,15 +56,15 @@ module sec_alu #(
                     end
                     
                     SEC_TEA: begin
-                        // 1. Shifteos (Corrimientos lógicos)
+                        
                         tea_shift_l = a << 4;
                         tea_shift_r = a >> 5;
 
-                        // 2. Sumas con la llave secreta
+                        
                         tea_add_l = tea_shift_l + key;
                         tea_add_r = tea_shift_r + key;
 
-                        // 3. XOR final uniendo todo con la entrada 'b'
+                        
                         result = tea_add_l ^ b ^ tea_add_r;
                     end
 
