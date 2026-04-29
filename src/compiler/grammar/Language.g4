@@ -43,10 +43,10 @@ param
     ;
 
 typeSpec
-    : LBRACK type RBRACK
+    : LBRACK dType RBRACK
     ;
 
-type
+dType
     : INT
     | BOOL
     | CHAR
