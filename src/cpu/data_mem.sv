@@ -16,9 +16,17 @@ module data_mem #(
     integer i;
 
     initial begin
+        
         for (i = 0; i < DEPTH; i = i + 1) begin
             memory[i] = '0;
         end
+        
+        
+        $readmemh("memory.mem", memory);
+        
+        $display("===============================================================");
+        $display(" [DATA MEM] Data inyected in RAM");
+        $display("===============================================================");
     end
 
     // Word-aligned address
