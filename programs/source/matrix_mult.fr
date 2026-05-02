@@ -1,0 +1,36 @@
+
+fonc [void] auxiliar([int] *A, [int] *B, [int] *R,
+                     [int] filas_A, [int] col_A,
+                     [int] filas_B, [int] col_B,
+                     [int] i, [int] j, [int] k, [int] acc) {
+    si (i == filas_A) {
+        ret;
+    }
+
+    si (j == col_B) {
+        [int] x = auxiliar(A, B, R, filas_A, col_A, filas_B, col_B, i + 1, 0, 0, 0);
+        ret;
+    }
+
+    si (k == col_A) {
+        R@(i)@(j) = acc;
+        [int] y = auxiliar(A, B, R, filas_A, col_A, filas_B, col_B, i, j + 1, 0, 0);
+        ret;
+    }
+
+    [int] m = auxiliar(A, B, R, filas_A, col_A, filas_B, col_B,
+                       i, j, k + 1, acc + A@(i)@(k) * B@(k)@(j));
+    ret;
+}
+
+fonc [void] multiplicar_matrices([int] *A, [int] *B, [int] *R,
+                                 [int] filas_A, [int] col_A,
+                                 [int] filas_B, [int] col_B) {
+    si (!(col_A == filas_B)) {
+        $ Error: dimensiones incompatibles
+        ret;
+    }
+
+    auxiliar(A, B, R, filas_A, col_A, filas_B, col_B, 0, 0, 0, 0);
+    ret;
+}

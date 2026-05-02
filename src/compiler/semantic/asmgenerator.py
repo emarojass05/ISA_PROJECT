@@ -10,7 +10,7 @@ class AsmGenerator(LanguageVisitor):
     ]
 
     ARG_REGISTERS = [
-        "a0", "a1", "a2", "a3", "a4", "a5", "a6"
+        "a0", "a1", "a2", "a3", "a4", "a5"
     ]
 
     def __init__(self, symbol_table, label_table, fixup_table):
@@ -188,11 +188,16 @@ class AsmGenerator(LanguageVisitor):
         parameters = function_symbol.get("parameters", [])
 
         for index, parameter in enumerate(parameters):
-            if index >= len(self.ARG_REGISTERS):
-                raise Exception(f"Function '{function_name}' has too many parameters")
-
             parameter_symbol = self.get_symbol(parameter["name"])
-            self.emit_store_symbol(self.ARG_REGISTERS[index], parameter_symbol)
+
+            if index < len(self.ARG_REGISTERS):
+                self.emit_store_symbol(self.ARG_REGISTERS[index], parameter_symbol)
+            else:
+                stack_offset = 4 + (index - len(self.ARG_REGISTERS)) * self.WORD_SIZE
+                tmp_register = self.allocate_register()
+                self.emit(f"lw {tmp_register}, {stack_offset}(sp)")
+                self.emit_store_symbol(tmp_register, parameter_symbol)
+                self.free_register(tmp_register)
 
         self.visit(ctx.block())
 
@@ -575,23 +580,33 @@ class AsmGenerator(LanguageVisitor):
 
         arguments = ctx.args().expr() if ctx.args() else []
 
-        if len(arguments) > len(self.ARG_REGISTERS):
-            raise Exception(f"Function '{function_name}' has too many arguments")
+        num_args = len(arguments)
+        num_arg_regs = len(self.ARG_REGISTERS)
+        num_extras = max(0, num_args - num_arg_regs)
+        extra_bytes = num_extras * self.WORD_SIZE
 
-        argument_registers = []
+        if num_extras > 0:
+            self.emit(f"addi sp, sp, -{extra_bytes}")
 
-        for arg_ctx in arguments:
-            argument_registers.append(self.visit(arg_ctx))
+        for index, arg_ctx in enumerate(arguments):
+            value_register = self.visit(arg_ctx)
 
-        for index, argument_register in enumerate(argument_registers):
-            self.emit_move(self.ARG_REGISTERS[index], argument_register)
-            self.free_register(argument_register)
+            if index < num_arg_regs:
+                self.emit_move(self.ARG_REGISTERS[index], value_register)
+            else:
+                stack_offset = (index - num_arg_regs) * self.WORD_SIZE
+                self.emit(f"sw {value_register}, {stack_offset}(sp)")
+
+            self.free_register(value_register)
 
         self.emit_jump_fixup(
             instruction=f"jal ra, {function_label}",
             label_name=function_label,
             jump_type="JAL"
         )
+
+        if num_extras > 0:
+            self.emit(f"addi sp, sp, {extra_bytes}")
 
         result_register = self.allocate_register()
         self.emit_move(result_register, "a0")

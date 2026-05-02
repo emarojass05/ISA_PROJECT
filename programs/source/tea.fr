@@ -1,0 +1,32 @@
+[int] DELTA = 0x9E3779B9;
+
+$ Cifrado de 64 bits usando TEA
+fonc [void] tea_encrypt([int] *v, [int] *key) {
+    [int] v0 = v@(0);
+    [int] v1 = v@(1);
+    [int] sum = 0;
+
+    pour ([int] i = 0; i < 32; i = i + 1) {
+        sum = sum + DELTA;
+        v0 = v0 + (((v1 << 4) + key@(0)) ^ (v1 + sum) ^ ((v1 >> 5) + key@(1)));
+        v1 = v1 + (((v0 << 4) + key@(2)) ^ (v0 + sum) ^ ((v0 >> 5) + key@(3)));
+    }
+
+    v@(0) = v0;
+    v@(1) = v1;
+}
+
+fonc [void] tea_decrypt([int] *v, [int] *key) {
+    [int] v0 = v@(0);
+    [int] v1 = v@(1);
+    [int] sum = DELTA * 32;
+
+    pour ([int] i = 0; i < 32; i = i + 1) {
+        v1 = v1 - (((v0 << 4) + key@(2)) ^ (v0 + sum) ^ ((v0 >> 5) + key@(3)));
+        v0 = v0 - (((v1 << 4) + key@(0)) ^ (v1 + sum) ^ ((v1 >> 5) + key@(1)));
+        sum = sum - DELTA;
+    }
+
+    v@(0) = v0;
+    v@(1) = v1;
+}
