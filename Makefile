@@ -118,6 +118,12 @@ antlr-clear: ## Clear ANTLR output folder(s)
 frc-parse-%: antlr-build ## Parse .fr source file from programs/source
 	PYTHONPATH=. $(PYTHON) -m $(FRC_COMPILER) $(FRC_SRC_DIR)/$*.fr
 
+frc-build-%: antlr-build ## Compile .fr source and save both .hex and .asm
+	PYTHONPATH=. $(PYTHON) -m $(FRC_COMPILER) $(FRC_SRC_DIR)/$*.fr -s
+
+frc-debug-%: antlr-build ## Compile with verbose, AST and symbol tables
+	PYTHONPATH=. $(PYTHON) -m $(FRC_COMPILER) $(FRC_SRC_DIR)/$*.fr -v -s -t -m
+
 asm-encode-%: ## Encode programs/asm/%.s and print hexadecimal output
 	$(PYTHON) $(ASM_ENCODER) $*
 

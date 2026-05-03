@@ -1,4 +1,5 @@
 import sys
+import argparse
 from pathlib import Path
 
 from antlr4 import FileStream, CommonTokenStream
@@ -373,33 +374,102 @@ def print_hex_code(hex_code):
         print(f"0x{address:04X}: {code}")
 
 
-def save_hex_code(hex_code, source_file):
-    output_dir = Path("build") / "bin"
-    output_dir.mkdir(parents=True, exist_ok=True)
+def save_hex_code(hex_code, source_file, output_path=None):
+    # Determine output path: explicit -o flag or default build/bin/<name>.hex
+    if output_path is not None:
+        output_file = Path(output_path)
+        if output_file.suffix == "":
+            output_file = output_file.with_suffix(".hex")
+    else:
+        output_dir = Path("build") / "bin"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        source_name = Path(source_file).stem
+        output_file = output_dir / f"{source_name}.hex"
 
-    source_name = Path(source_file).stem
-    output_file = output_dir / f"{source_name}.hex"
+    # Make sure the parent directory exists when -o points elsewhere
+    output_file.parent.mkdir(parents=True, exist_ok=True)
 
+    # Header line with program size and entry point (ignored by $readmemh)
     with output_file.open("w", encoding="utf-8") as file:
+        file.write(f"// SIZE={len(hex_code)} ENTRY=0x0000\n")
         for code in hex_code:
             file.write(f"{code}\n")
 
     return output_file
 
+def save_asm_code(asm_source, source_file, output_path=None):
+    # Determine output path: derive from -o or default build/bin/<name>.asm
+    if output_path is not None:
+        asm_file = Path(output_path).with_suffix(".asm")
+    else:
+        output_dir = Path("build") / "bin"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        source_name = Path(source_file).stem
+        asm_file = output_dir / f"{source_name}.asm"
+
+    # Make sure the parent directory exists
+    asm_file.parent.mkdir(parents=True, exist_ok=True)
+
+    with asm_file.open("w", encoding="utf-8") as file:
+        file.write(asm_source)
+        file.write("\n")
+
+    return asm_file
+
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python -m src.compiler.main <source_file.fr>")
-        sys.exit(1)
+    # CLI configuration
+    parser = argparse.ArgumentParser(
+        prog="frc",
+        description="FRC compiler: translates .fr source files into binary code"
+    )
+    parser.add_argument("source", help="Path to the .fr source file")
+    parser.add_argument(
+        "-o", "--output",
+        default=None,
+        help="Output binary file (default: build/bin/<name>.hex)"
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Verbose mode: print each compilation phase"
+    )
+    parser.add_argument(
+        "-s", "--asm",
+        action="store_true",
+        help="Also save assembly file (.asm) alongside the binary"
+    )
+    parser.add_argument(
+        "-t", "--tree",
+        action="store_true",
+        help="Print the abstract syntax tree (AST)"
+    )
+    parser.add_argument(
+        "-m", "--map",
+        action="store_true",
+        help="Print symbol table, reference table, labels and fixups"
+    )
 
-    source_file = sys.argv[1]
+    args = parser.parse_args()
+    source_file = args.source
+
+    # Phase 1+2: Lexical and syntactic analysis
+    if args.verbose:
+        print("[INFO] Phase 1-2: Lexical and syntactic analysis...")
 
     result = parse_file(source_file)
 
     if result is None:
         sys.exit(1)
 
-    tree, parser = result
+    tree, antlr_parser = result
+
+    if args.verbose:
+        print("[OK] Parsing completed")
+
+    # Phase 3: Semantic analysis and symbol table construction
+    if args.verbose:
+        print("[INFO] Phase 3: Semantic analysis...")
 
     symbol_table = SymbolTable()
     label_table = LabelTable()
@@ -409,6 +479,13 @@ def main():
         semantic_builder = SemanticTableBuilder(symbol_table)
         semantic_builder.visit(tree)
 
+        if args.verbose:
+            print("[OK] Symbol table built")
+
+        # Phase 4: Assembly code generation
+        if args.verbose:
+            print("[INFO] Phase 4: Assembly code generation...")
+
         asm_generator = AsmGenerator(
             symbol_table=symbol_table,
             label_table=label_table,
@@ -417,27 +494,49 @@ def main():
         asm_generator.visit(tree)
 
         asm_source = asm_generator.get_asm()
+
+        if args.verbose:
+            print("[OK] Assembly generated")
+
+        # Phase 5+6: Jump resolution and binary code generation
+        if args.verbose:
+            print("[INFO] Phase 5-6: Resolving jumps and encoding binary...")
+
         hex_code = assemble(asm_source)
+
+        if args.verbose:
+            print("[OK] Binary code generated")
 
     except Exception as error:
         print(f"[ERR](COMPILER) {error}")
         sys.exit(1)
 
-    print("[OK] Parse completed")
-    print(tree.toStringTree(recog=parser))
+    # Optional output: AST tree (-t)
+    if args.tree:
+        print("\n========== AST ==========")
+        print(tree.toStringTree(recog=antlr_parser))
 
-    print_symbol_table(symbol_table)
-    print_reference_table(symbol_table)
-    print_label_table(label_table)
-    print_fixup_table(fixup_table)
+    # Optional output: symbol/reference/label/fixup tables (-m)
+    if args.map:
+        print_symbol_table(symbol_table)
+        print_reference_table(symbol_table)
+        print_label_table(label_table)
+        print_fixup_table(fixup_table)
 
-    print("\n========== ASM ==========")
-    print(asm_source)
+    # Verbose only: full ASM and HEX dumps in stdout
+    if args.verbose:
+        print("\n========== ASM ==========")
+        print(asm_source)
+        print_hex_code(hex_code)
 
-    print_hex_code(hex_code)
+    # Always save the binary file
+    output_file = save_hex_code(hex_code, source_file, args.output)
+    print(f"[OK] HEX saved in {output_file}")
 
-    output_file = save_hex_code(hex_code, source_file)
-    print(f"\n[OK] HEX saved in {output_file}")
+    # Save ASM file when -s is requested
+    if args.asm:
+        asm_file = save_asm_code(asm_source, source_file, args.output)
+        print(f"[OK] ASM saved in {asm_file}")
 
 
 if __name__ == "__main__":

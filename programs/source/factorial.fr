@@ -1,0 +1,16 @@
+fonc [int] main() {
+    [int] n = 5;
+    [int] resultado = 1;
+    [int] i = 1;
+
+    si (n == 0) {
+        resultado = 1;
+    } sinon {
+        alors (i <= n) {
+            resultado = resultado * i;
+            i = i + 1;
+        }
+    }
+
+    ret resultado;
+}
