@@ -8,11 +8,12 @@ module tb_cpu;
 
     // --- Instancia del Procesador (DUT) ---
     cpu_top #(
-        .PROGRAM_FILE("programs/hex/program.hex") // Ruta corregida según tu estructura
-    ) dut (
-        .clk(clk),
-        .rst(rst)
-    );
+            .PROGRAM_FILE("programs/hex/program.hex"),
+            .INITIAL_MEM("memory.mem")
+        ) dut (
+            .clk(clk),
+            .rst(rst)
+        );
 
     // Generación de Reloj (10 MHz)
     always #5 clk = ~clk;
@@ -66,12 +67,12 @@ module tb_cpu;
         dut.u_rf.registers[13] = 32'd64;       // Dirección base en RAM (0x40)
 
         // Monitoreo en tiempo real
-        $monitor("T: %0t | PC Fetch: %h | Auth: %b | Vault[0]: %h | Vault[1]: %h | Vault[2]: %h", 
-                 $time, dut.if_pc_cur, dut.auth_bit, dut.u_key_vault.vault[0], dut.u_key_vault.vault[1], dut.u_key_vault.vault[2]);
+        // $monitor("T: %0t | PC Fetch: %h | Auth: %b | Vault[0]: %h | Vault[1]: %h | Vault[2]: %h", 
+        //         $time, dut.if_pc_cur, dut.auth_bit, dut.u_key_vault.vault[0], dut.u_key_vault.vault[1], dut.u_key_vault.vault[2]);
 
         // Esperamos a que el programa ejecute sus instrucciones.
         // La alarma de seguridad saltará antes de llegar al final del tiempo.
-        #400; 
+        #2000000; 
         
         $finish;
     end

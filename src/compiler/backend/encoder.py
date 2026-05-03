@@ -39,6 +39,13 @@ OPCODES = {
     "j":    0x07,
     "jal":  0x07,
     "jr":   0x07,
+
+    # Security extension (OP_SEC = 0x06)
+    "auth": 0x06,
+    "ldk":  0x06,
+    "addk": 0x06,
+    "xork": 0x06,
+    "tea":  0x06
 }
 
 R_INFO = {
@@ -86,11 +93,12 @@ U_INFO = {
     "llhw": 0b001,
 }
 
-SEC_INSTRUCTIONS = {
-    "auth",
-    "ldk",
-    "enc",
-    "dec",
+SEC_INFO = {
+    "auth": 0b000,
+    "ldk":  0b001,
+    "addk": 0b010,
+    "xork": 0b011,
+    "tea":  0b100,
 }
 
 REGISTER_ALIASES = {
@@ -336,6 +344,18 @@ def encode_u_type(op, rd, immediate):
         | opcode
     )
 
+def encode_sec_type(op, rd, rs1, rs2):
+    # SEC instructions follow R-type layout: funct7=0 | rs2 | rs1 | funct3 | rd | opcode
+    opcode = OPCODES[op]
+    funct3 = SEC_INFO[op]
+
+    return (
+        (rs2 << 20)
+        | (rs1 << 15)
+        | (funct3 << 12)
+        | (rd << 7)
+        | opcode
+    )
 
 def encode_line(line, pc, labels):
     line = remove_labels(line)
@@ -458,10 +478,26 @@ def encode_line(line, pc, labels):
 
         return [encode_u_type(op, rd, immediate)]
 
-    if op in SEC_INSTRUCTIONS:
-        raise ValueError(
-            f"The SEC instruction '{op}' does not have a defined format in the ISA yet"
-        )
+    if op in SEC_INFO:
+            if op == "auth":
+                # auth rs1: a single register holding the password (0xDEADBEEF)
+                expect_args(op, args, 1)
+                rs1 = parse_register(args[0])
+                return [encode_sec_type(op, 0, rs1, 0)]
+
+            if op == "ldk":
+                # ldk rs1, rs2: store rs1 into key vault at index rs2[3:0]
+                expect_args(op, args, 2)
+                rs1 = parse_register(args[0])
+                rs2 = parse_register(args[1])
+                return [encode_sec_type(op, 0, rs1, rs2)]
+
+            # addk, xork, tea: rd = f(rs1, vault[rs2[3:0]])
+            expect_args(op, args, 3)
+            rd = parse_register(args[0])
+            rs1 = parse_register(args[1])
+            rs2 = parse_register(args[2])
+            return [encode_sec_type(op, rd, rs1, rs2)]
 
     raise ValueError(f"Unsupported instruction: {op}")
 
