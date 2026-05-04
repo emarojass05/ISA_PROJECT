@@ -356,7 +356,7 @@ module cpu_top #(
         .clk(clk),
         .vault_we(id_ex_reg.vault_we),
         .auth_en(auth_bit),
-        .addr(id_ex_reg.vault_we ? id_ex_reg.rs2_data[3:0] : id_rs2_data[3:0]),
+        .addr(id_ex_reg.vault_we ? id_ex_reg.rs2_data[3:0] :(id_sec_op == SEC_TEA ? 4'd0 : id_rs2_data[3:0])),
         .wdata(id_ex_reg.rs1_data),
         .k_out(id_k_out)
     );

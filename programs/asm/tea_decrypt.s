@@ -34,16 +34,17 @@ li      x7, 0x9E3779B9
 nop
 nop
 
-# Initial sum = DELTA * N (N = number of rounds, here N = 1)
-li      x6, 0x9E3779B9
-nop
-nop
-
 # Memory range (must match tea_encrypt.s)
 li      x10, 0x1000
 li      x11, 0x1040
 
 loop_blocks:
+    # Initial sum = DELTA * N (N = number of rounds, here N = 1)
+    # IMPORTANT: reset sum for every 64-bit block
+    li      x6, 0x9E3779B9
+    nop
+    nop
+
     lw      x4, 0(x10)
     lw      x5, 4(x10)
     nop
