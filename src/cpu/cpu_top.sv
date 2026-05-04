@@ -198,7 +198,7 @@ module cpu_top #(
 
     assign id_jump_taken = (id_opcode == OP_JUMP) && (id_pc_src != PC_PLUS4);
 
-    always_comb begin
+    always @(*) begin
         if_id_uses_rs1 = 1'b0;
         if_id_uses_rs2 = 1'b0;
 
@@ -277,7 +277,7 @@ module cpu_top #(
         .forward_b(forward_b)
     );
 
-    always_comb begin
+    always @(*) begin
         if (ex_branch_taken) begin
             if_pc_next = ex_pc_imm;
         end else if (id_pc_src == PC_IMM) begin
@@ -361,7 +361,7 @@ module cpu_top #(
         .k_out(id_k_out)
     );
 
-    always_comb begin
+    always @(*) begin
         case (ex_mem_reg.wb_src)
             WB_ALU:  forward_ex_mem_val = ex_mem_reg.alu_result;
             WB_MEM:  forward_ex_mem_val = mem_rdata;
@@ -371,7 +371,7 @@ module cpu_top #(
         endcase
     end
 
-    always_comb begin
+    always @(*) begin
         case (forward_a)
             2'b10:   ex_forwarded_rs1 = forward_ex_mem_val;
             2'b01:   ex_forwarded_rs1 = wb_data;
@@ -379,7 +379,7 @@ module cpu_top #(
         endcase
     end
 
-    always_comb begin
+    always @(*) begin
         case (forward_b)
             2'b10:   ex_forwarded_rs2 = forward_ex_mem_val;
             2'b01:   ex_forwarded_rs2 = wb_data;
@@ -422,7 +422,7 @@ module cpu_top #(
         end
     end
 
-    always_comb begin
+    always @(*) begin
         ex_branch_taken = 1'b0;
 
         if (id_ex_reg.branch) begin
@@ -450,7 +450,7 @@ module cpu_top #(
         .mem_read_data(mem_rdata)
     );
 
-    always_comb begin
+    always @(*) begin
         case (mem_wb_reg.wb_src)
             WB_ALU:  wb_data = mem_wb_reg.alu_result;
             WB_MEM:  wb_data = mem_wb_reg.mem_rdata;

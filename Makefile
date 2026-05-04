@@ -18,6 +18,7 @@ SIM_DIR = sim
 SIM_BUILD = $(BUILD_DIR)/sim
 COMPILER_BUILD = $(BUILD_DIR)/programs # Programs built with compiler
 BIN_DIR = $(BUILD_DIR)/bin
+OUT_DIR = $(BUILD_DIR)/out
 
 CPU_SRC_DIR = src/cpu
 TB_DIR  = tb
@@ -36,7 +37,12 @@ MEM_DIR = programs/mems
 
 PROGRAM ?= $(HEX_DIR)/program.hex
 INITIAL_MEM ?=
-MAX_CYCLES ?= 200
+MAX_CYCLES ?= 2000
+
+EXAMPLES_DIR = examples
+ADDRESS ?= 0x1000
+FILE ?= test2.png
+ENC_MEM = build/memory.mem
 
 # =========================
 # CPU Modules
@@ -52,8 +58,6 @@ CPU_SRC = $(ISA_DEFS) $(CPU_MODS)
 # remain automatically documented
 # =================================================
 
-
-
 .PHONY: all help
 
 all: help
@@ -63,17 +67,14 @@ help:
 	@grep -E '^[a-zA-Z0-9_%-.]+:.*?## ' $(MAKEFILE_LIST) | \
 	awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
-sv-cbuild-%: $(CPU_SRC) $(TB_DIR)/tb_%.sv ## Build single CPU module '%' from src/cpu with it's testbench
+sv-cbuild-%: $(CPU_SRC) $(TB_DIR)/tb_%.sv ## Build CPU module '%' with its tb_%.sv testbench; usage: make sv-cbuild-NAME.
 	@mkdir -p $(SIM_BUILD)
 	$(IVERILOG) $(FLAGS) -s tb_$* -o $(SIM_BUILD)/$*.vvp $^
 
-sv-run-%: sv-cbuild-% ## Build %.vpp if not previously built and run it
+sv-run-%: sv-cbuild-%
 	$(VVP) $(SIM_BUILD)/$*.vvp
 
-sv-clear: ## Clear iverilog outputs folder(s)
-	@rm -rf $(SIM_BUILD)
-
-sv-cpu-exec: $(CPU_SRC) $(TB_DIR)/tb_cpu_program.sv ## Build and run CPU with arbitrary program hex and optional RAM mem
+sv-cpu-exec: $(CPU_SRC) $(TB_DIR)/tb_cpu_program.sv ## Build and run the CPU with PROGRAM=<hex>, optional INITIAL_MEM=<mem>, and MAX_CYCLES=<cycles>; usage: make sv-cpu-exec PROGRAM=... INITIAL_MEM=... MAX_CYCLES=....
 	@mkdir -p $(SIM_BUILD)
 	$(IVERILOG) $(FLAGS) \
 		-s tb_cpu_program \
@@ -84,24 +85,24 @@ sv-cpu-exec: $(CPU_SRC) $(TB_DIR)/tb_cpu_program.sv ## Build and run CPU with ar
 		$^
 	$(VVP) $(SIM_BUILD)/cpu_program.vvp
 
-wave-%: $(SIM_BUILD)/%.vcd
+wave-%: $(SIM_BUILD)/%.vcd ## Open '%'.vcd with GTKWave.
 	@$(GTK_WAVE) $^
 
-setup: ## Create Python venv and install dependencies
+setup: ## Create the Python .venv, upgrade pip, and install dependencies from requirements.txt.
 	python3 -m venv .venv
 	$(PYTHON) -m ensurepip --upgrade
 	$(PYTHON) -m pip install --upgrade pip
 	$(PYTHON) -m pip install -r requirements.txt
 
-antlr-download: ## Download pinned ANTLR tool
+antlr-download: ## Download the pinned ANTLR JAR into tools/ using ANTLR_VERSION; usage: make antlr-download.
 	@mkdir -p tools
 	curl -L -o $(ANTLR_JAR) https://www.antlr.org/download/antlr-$(ANTLR_VERSION)-complete.jar
 
-check-env: ## Check ANTLR versions
+check-env: ## Print the installed ANTLR Python runtime version and ANTLR JAR version; usage: make check-env.
 	$(PYTHON) -c "import importlib.metadata as m; print('antlr4-python3-runtime', m.version('antlr4-python3-runtime'))"
 	java -jar $(ANTLR_JAR) -version
 
-antlr-build: $(ANTLR_JAR) ## Build ANTLR modules
+antlr-build: $(ANTLR_JAR) ## Generate Python ANTLR modules from Language.g4 into src/compiler/generated; usage: make antlr-build.
 	@mkdir -p $(GENERATED_DIR)
 	@rm -rf $(GENERATED_DIR)/*
 	cd $(GRAMMAR_DIR) && $(ANTLR) -Dlanguage=Python3 -visitor -o ../generated $(GRAMMAR)
@@ -112,99 +113,93 @@ antlr-build: $(ANTLR_JAR) ## Build ANTLR modules
 $(ANTLR_JAR):
 	$(MAKE) antlr-download
 
-antlr-clear: ## Clear ANTLR output folder(s)
+antlr-clear: ## Remove all ANTLR-generated files from src/compiler/generated; usage: make antlr-clear.
 	@rm -rf $(GENERATED_DIR)/*
 
-frc-parse-%: antlr-build ## Parse .fr source file from programs/source
+frc-parse-%: antlr-build ## Parse programs/source/%.fr without compiling it; usage: make frc-parse-NAME.
 	PYTHONPATH=. $(PYTHON) -m $(FRC_COMPILER) $(FRC_SRC_DIR)/$*.fr
 
-frc-build-%: antlr-build ## Compile .fr source and save both .hex and .asm
+frc-build-%: antlr-build ## Compile programs/source/%.fr and save both .asm and .hex outputs; usage: make frc-build-NAME.
 	PYTHONPATH=. $(PYTHON) -m $(FRC_COMPILER) $(FRC_SRC_DIR)/$*.fr -s
 
-frc-debug-%: antlr-build ## Compile with verbose, AST and symbol tables
+frc-debug-%: antlr-build ## Compile programs/source/%.fr with verbose output, AST, and symbol tables; usage: make frc-debug-NAME.
 	PYTHONPATH=. $(PYTHON) -m $(FRC_COMPILER) $(FRC_SRC_DIR)/$*.fr -v -s -t -m
 
-asm-encode-%: ## Encode programs/asm/%.s and print hexadecimal output
+asm-encode-%: ## Encode programs/asm/%.s and print hexadecimal output to stdout; usage: make asm-encode-NAME.
 	$(PYTHON) $(ASM_ENCODER) $*
 
-asm-build-%: ## Encode programs/asm/%.s and save output into programs/hex/%.hex
+asm-build-%: ## Encode programs/asm/%.s and write hexadecimal output to programs/hex/%.hex; usage: make asm-build-NAME.
 	@mkdir -p $(HEX_DIR)
 	$(PYTHON) $(ASM_ENCODER) $* > $(HEX_DIR)/$*.hex
 
-
-EXAMPLES_DIR = examples
-ADDRESS ?= 0x1000
-FILE ?= test2.png
-
-encrypt-flow: ## Run end-to-end flow: load file -> simulate -> extract -> compare
+encrypt-flow: ## Run the full encryption flow for FILE=<file> from examples/ at ADDRESS=<addr>, producing build/out/enc_FILE.
+	@mkdir -p $(OUT_DIR)
 	@echo "=== Encryption Flow ==="
 	@echo "Input file : $(EXAMPLES_DIR)/$(FILE)"
-	@echo "Output file: $(EXAMPLES_DIR)/enc_$(FILE)"
+	@echo "Output file: $(OUT_DIR)/enc_$(FILE)"
 	@echo "Address    : $(ADDRESS)"
-	@rm -f memory.mem build/sim/memory_dump.txt $(EXAMPLES_DIR)/enc_$(FILE)
+	@rm -f $(ENC_MEM) build/sim/memory_dump.txt $(EXAMPLES_DIR)/enc_$(FILE)
 	@SIZE=$$(wc -c < "$(EXAMPLES_DIR)/$(FILE)") ; \
 	 echo "File size  : $$SIZE bytes" ; \
 	 echo "" ; \
 	 echo "[1/4] Switching program.hex to encrypt routine..." ; \
 	 cp programs/hex/encrypt.hex programs/hex/program.hex ; \
 	 echo "" ; \
-	 echo "[2/4] Loading file into memory.mem..." ; \
-	 ./tools/load_file.py --input "$(EXAMPLES_DIR)/$(FILE)" --output memory.mem --address $(ADDRESS) ; \
+	 echo "[2/4] Loading file into $(ENC_MEM)..." ; \
+	 ./tools/load_file.py --input "$(EXAMPLES_DIR)/$(FILE)" --output $(ENC_MEM) --address $(ADDRESS) ; \
 	 echo "" ; \
 	 echo "[3/4] Running CPU simulation..." ; \
 	 "$(MAKE)" sv-run-cpu ; \
 	 echo "" ; \
 	 echo "[4/4] Extracting result from memory_dump..." ; \
-	 ./tools/extract_data.py --memory build/sim/memory_dump.txt --address $(ADDRESS) --size $$SIZE --output "$(EXAMPLES_DIR)/enc_$(FILE)" ; \
+	 ./tools/extract_data.py --memory build/sim/memory_dump.txt --address $(ADDRESS) --size $$SIZE --output "$(OUT_DIR)/enc_$(FILE)" ; \
 	 echo "" ; \
 	 echo "=== Comparing original vs result ===" ; \
-	 if cmp -s "$(EXAMPLES_DIR)/$(FILE)" "$(EXAMPLES_DIR)/enc_$(FILE)" ; then \
+	 if cmp -s "$(EXAMPLES_DIR)/$(FILE)" "$(OUT_DIR)/enc_$(FILE)" ; then \
 	     echo "[INFO] Files are IDENTICAL (no encryption applied to this region)" ; \
 	 else \
 	     echo "[OK] Files DIFFER (encryption modified the data)" ; \
 	 fi
 
-encrypt-clean: ## Remove temp files generated by encrypt-flow and decrypt-flow
-	@rm -f memory.mem build/sim/memory_dump.txt $(EXAMPLES_DIR)/enc_* $(EXAMPLES_DIR)/dec_*
-	@echo "[OK] Cleaned encryption artifacts"
-
-decrypt-flow: ## Run decryption flow on a file from examples/
+decrypt-flow: ## Run the full decryption flow for FILE=<file> from build/out at ADDRESS=<addr>, producing build/out/dec_FILE.
+	@mkdir -p $(OUT_DIR)
 	@echo "=== Decryption Flow ==="
-	@echo "Input file : $(EXAMPLES_DIR)/$(FILE)"
-	@echo "Output file: $(EXAMPLES_DIR)/dec_$(FILE)"
+	@echo "Input file : $(OUT_DIR)/$(FILE)"
+	@echo "Output file: $(OUT_DIR)/dec_$(FILE)"
 	@echo "Address    : $(ADDRESS)"
-	@rm -f memory.mem build/sim/memory_dump.txt $(EXAMPLES_DIR)/dec_$(FILE)
-	@SIZE=$$(wc -c < "$(EXAMPLES_DIR)/$(FILE)") ; \
+	@rm -f $(ENC_MEM) build/sim/memory_dump.txt $(OUT_DIR)/dec_$(FILE)
+	@SIZE=$$(wc -c < "$(OUT_DIR)/$(FILE)") ; \
 	 echo "File size  : $$SIZE bytes" ; \
 	 echo "" ; \
 	 echo "[1/4] Switching program.hex to decrypt routine..." ; \
 	 cp programs/hex/decrypt.hex programs/hex/program.hex ; \
 	 echo "" ; \
-	 echo "[2/4] Loading file into memory.mem..." ; \
-	 ./tools/load_file.py --input "$(EXAMPLES_DIR)/$(FILE)" --output memory.mem --address $(ADDRESS) ; \
+	 echo "[2/4] Loading file into $(ENC_MEM)..." ; \
+	 ./tools/load_file.py --input "$(OUT_DIR)/$(FILE)" --output $(ENC_MEM) --address $(ADDRESS) ; \
 	 echo "" ; \
 	 echo "[3/4] Running CPU simulation..." ; \
 	 "$(MAKE)" sv-run-cpu ; \
 	 echo "" ; \
 	 echo "[4/4] Extracting result from memory_dump..." ; \
-	 ./tools/extract_data.py --memory build/sim/memory_dump.txt --address $(ADDRESS) --size $$SIZE --output "$(EXAMPLES_DIR)/dec_$(FILE)" ; \
+	 ./tools/extract_data.py --memory build/sim/memory_dump.txt --address $(ADDRESS) --size $$SIZE --output "$(OUT_DIR)/dec_$(FILE)" ; \
 	 echo "" ; \
 	 echo "=== Result ==="
 
-verify-roundtrip: ## Encrypt then decrypt a file and verify the result matches the original
+verify-roundtrip: ## Encrypt and then decrypt FILE=<file> from examples/, then compare the final output with the original; usage: make verify-roundtrip FILE=file.
+	@mkdir -p $(OUT_DIR)
 	@echo "=== Roundtrip Verification ==="
 	@$(MAKE) encrypt-flow FILE=$(FILE)
 	@$(MAKE) decrypt-flow FILE=enc_$(FILE)
 	@echo ""
 	@echo "=== Final comparison: original vs decrypted ==="
-	@if cmp -s "$(EXAMPLES_DIR)/$(FILE)" "$(EXAMPLES_DIR)/dec_enc_$(FILE)" ; then \
+	@if cmp -s "$(EXAMPLES_DIR)/$(FILE)" "$(OUT_DIR)/dec_enc_$(FILE)" ; then \
 	    echo "[PASS] Encryption/decryption is reversible — files match." ; \
 	else \
 	    echo "[FAIL] Decrypted file does NOT match the original." ; \
 	fi
 
-
-verify-roundtrip-tea: ## Encrypt + decrypt using TEA versions
+verify-roundtrip-tea: ## Build TEA encryption/decryption routines, activate them, and run roundtrip verification for FILE=<file>.
+	@mkdir -p $(OUT_DIR)
 	@echo "=== TEA Roundtrip Verification ==="
 	@echo "[1/3] Building TEA assembly programs..."
 	@$(MAKE) asm-build-tea_encrypt
@@ -218,3 +213,8 @@ verify-roundtrip-tea: ## Encrypt + decrypt using TEA versions
 	@echo ""
 	@echo "[3/3] Running standard roundtrip..."
 	@$(MAKE) verify-roundtrip FILE=$(FILE)
+
+clear: ## Delete the entire build/ directory and all generated artifacts; usage: make clear.
+	@echo "Cleaning build/ folder..."
+	@rm -rf $(BUILD_DIR)
+	@echo "build/ folder cleared."
