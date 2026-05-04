@@ -155,7 +155,7 @@ make clean
 
 ---
 
-## 🔧 Uso de la herramienta de carga de archivos
+## Uso de la herramienta de carga de archivos
 
 ### Cargar un archivo en RAM
 
@@ -247,7 +247,7 @@ make tb_top
 
 ---
 
-## 👥 Autores
+## Autores
 
 - Emanuel Rojas Fernandez — `emmrojas@estudiantec.cr`
 - Gabriel Gonzalez Muñoz -
