@@ -1,6 +1,5 @@
 # Modelado de Simulación — SecuRISC-32
 
-> **Versión 1.0** · CE-4301 · I-2026
 
 ## 1. Objetivo del modelo de simulación
 
@@ -312,7 +311,6 @@ Cada testbench produce un `sim/<tb>.vcd`. Señales recomendadas para inspección
 - `top.key_vault.vault[*]`
 - `top.cpu.status_reg.SR`
 
-Se proporciona un archivo `sim/wave.gtkw` con la disposición de señales para acelerar la inspección.
 
 ---
 

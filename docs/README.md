@@ -561,7 +561,6 @@ Descripción:
 ### Comandos de cifrado
 
 ```bash
-make encrypt-clean
 make verify-roundtrip FILE=test1.png
 make verify-roundtrip-tea FILE=test1.png
 ```
@@ -570,7 +569,6 @@ Descripción:
 
 | Comando | Descripción |
 | --- | --- |
-| `make encrypt-clean` | Limpia artefactos de cifrado y descifrado |
 | `make verify-roundtrip FILE=test1.png` | Verifica cifrado y descifrado estándar |
 | `make verify-roundtrip-tea FILE=test1.png` | Verifica cifrado y descifrado usando los programas TEA |
 
@@ -606,36 +604,6 @@ Descripción:
 
 ---
 
-## Flujo recomendado para la defensa
-
-Antes de la defensa se recomienda ejecutar:
-
-```bash
-make setup
-make antlr-build
-make sv-run-alu
-make sv-run-key_vault
-make sv-run-sec_alu
-make asm-build-auth_test
-make asm-build-sec_test
-make frc-build-factorial
-make encrypt-clean
-make verify-roundtrip FILE=test1.png
-make verify-roundtrip-tea FILE=test1.png
-```
-
-Este flujo permite demostrar:
-
-1. Configuración del entorno.
-2. Generación del parser con ANTLR.
-3. Simulación de módulos individuales.
-4. Ensamblado de programas de seguridad.
-5. Compilación desde el lenguaje fuente.
-6. Carga de archivos en memoria.
-7. Cifrado y descifrado de archivos.
-8. Verificación de integridad mediante comparación final.
-
----
 
 ## Archivos generados
 
@@ -648,15 +616,9 @@ Durante la compilación y simulación se generan archivos como:
 | `build/sim/memory_dump.txt` | Volcado final de memoria |
 | `build/sim/register_dump.txt` | Volcado de registros |
 | `programs/hex/*.hex` | Programas codificados en hexadecimal |
-| `memory.mem` | Memoria inicial generada por `load_file.py` |
 | `examples/enc_*` | Archivos cifrados |
 | `examples/dec_*` | Archivos descifrados |
 
-Para limpiar artefactos de cifrado:
-
-```bash
-make encrypt-clean
-```
 
 Para limpiar salidas de simulación:
 
@@ -673,8 +635,3 @@ make sv-clear
 - Emerson Monge Hernández
 - Gabriel Fernández Vargas
 
----
-
-## Licencia
-
-Este proyecto se distribuye bajo la licencia MIT. Consultar el archivo `LICENSE` para más detalles.
