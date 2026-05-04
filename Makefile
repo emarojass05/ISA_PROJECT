@@ -134,7 +134,7 @@ asm-build-%: ## Encode programs/asm/%.s and save output into programs/hex/%.hex
 
 EXAMPLES_DIR = examples
 ADDRESS ?= 0x1000
-FILE ?= test1.png
+FILE ?= test2.png
 
 encrypt-flow: ## Run end-to-end flow: load file -> simulate -> extract -> compare
 	@echo "=== Encryption Flow ==="
@@ -152,7 +152,7 @@ encrypt-flow: ## Run end-to-end flow: load file -> simulate -> extract -> compar
 	 ./tools/load_file.py --input "$(EXAMPLES_DIR)/$(FILE)" --output memory.mem --address $(ADDRESS) ; \
 	 echo "" ; \
 	 echo "[3/4] Running CPU simulation..." ; \
-	 $(MAKE) sv-run-cpu ; \
+	 "$(MAKE)" sv-run-cpu ; \
 	 echo "" ; \
 	 echo "[4/4] Extracting result from memory_dump..." ; \
 	 ./tools/extract_data.py --memory build/sim/memory_dump.txt --address $(ADDRESS) --size $$SIZE --output "$(EXAMPLES_DIR)/enc_$(FILE)" ; \
@@ -184,7 +184,7 @@ decrypt-flow: ## Run decryption flow on a file from examples/
 	 ./tools/load_file.py --input "$(EXAMPLES_DIR)/$(FILE)" --output memory.mem --address $(ADDRESS) ; \
 	 echo "" ; \
 	 echo "[3/4] Running CPU simulation..." ; \
-	 $(MAKE) sv-run-cpu ; \
+	 "$(MAKE)" sv-run-cpu ; \
 	 echo "" ; \
 	 echo "[4/4] Extracting result from memory_dump..." ; \
 	 ./tools/extract_data.py --memory build/sim/memory_dump.txt --address $(ADDRESS) --size $$SIZE --output "$(EXAMPLES_DIR)/dec_$(FILE)" ; \
@@ -202,3 +202,19 @@ verify-roundtrip: ## Encrypt then decrypt a file and verify the result matches t
 	else \
 	    echo "[FAIL] Decrypted file does NOT match the original." ; \
 	fi
+
+
+verify-roundtrip-tea: ## Encrypt + decrypt using TEA versions
+	@echo "=== TEA Roundtrip Verification ==="
+	@echo "[1/3] Building TEA assembly programs..."
+	@$(MAKE) asm-build-tea_encrypt
+	@$(MAKE) asm-build-tea_decrypt
+
+	@echo ""
+	@echo "[2/3] Switching to TEA hex files..."
+	@cp programs/hex/tea_encrypt.hex programs/hex/encrypt.hex
+	@cp programs/hex/tea_decrypt.hex programs/hex/decrypt.hex
+
+	@echo ""
+	@echo "[3/3] Running standard roundtrip..."
+	@$(MAKE) verify-roundtrip FILE=$(FILE)
