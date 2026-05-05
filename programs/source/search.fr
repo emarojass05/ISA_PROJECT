@@ -1,0 +1,18 @@
+fonc [int] search([int] *arr, [int] n, [int] target) {
+    [int] i = 0;
+
+    alors (i < n) {
+        si (arr@(i) == target) {
+            ret i;
+        }
+        i = i + 1;
+    }
+
+    ret 0 - 1;
+}
+
+fonc [int] main() {
+    [int] *data = {3, 7, 1, 9, 4, 2, 8};
+    [int] pos = search(data, 7, 9);
+    ret pos;
+}

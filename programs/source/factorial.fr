@@ -1,0 +1,18 @@
+fonc [int] factorial_aux ([int] n, [int] acc) {
+    si (n <= 1) {
+        ret acc;
+    }
+
+    ret factorial_aux(n - 1, acc * n);
+}
+
+fonc [int] factorial ([int] n) {
+    ret factorial_aux(n, 1);
+}
+
+fonc [int] main() {
+    [int] n = 5;
+    [int] result = factorial(n);
+
+    ret result;
+}
