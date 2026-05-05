@@ -9,6 +9,7 @@ ANTLR_VERSION = 4.13.2
 ANTLR_JAR = tools/antlr-$(ANTLR_VERSION)-complete.jar
 ANTLR = java -jar $(abspath $(ANTLR_JAR))
 GTK_WAVE = gtkwave
+FRC = $(PYTHON) -m src.compiler.frc
 
 # =========================
 # Folders & Files
@@ -24,6 +25,7 @@ CPU_SRC_DIR = src/cpu
 TB_DIR  = tb
 
 FRC_SRC_DIR = programs/source
+ASM_DIR = programs/asm
 GRAMMAR_DIR = src/compiler/grammar
 GENERATED_DIR = src/compiler/generated
 
@@ -109,6 +111,25 @@ $(ANTLR_JAR):
 
 antlr-clear: ## Remove all ANTLR-generated files from src/compiler/generated; usage: make antlr-clear.
 	@rm -rf $(GENERATED_DIR)/*
+
+frc-build-%: ## Compile programs/source/%.fr to programs/hex/%.hex using frc; usage: make frc-build-NAME.
+	@mkdir -p $(HEX_DIR)
+	$(FRC) $(FRC_SRC_DIR)/$*.fr -o $(HEX_DIR)/$*.hex
+
+frc-asm-%: ## Compile programs/source/%.fr to build/asm/%.s using frc -c; usage: make frc-asm-NAME.
+	@mkdir -p $(BUILD_DIR)/asm
+	$(FRC) -c $(FRC_SRC_DIR)/$*.fr -o $(BUILD_DIR)/asm/$*.s
+
+asm-build-%: ## Assemble programs/asm/%.s or programs/asm/%.asm to programs/hex/%.hex using frc; usage: make asm-build-NAME.
+	@mkdir -p $(HEX_DIR)
+	@if [ -f "$(ASM_DIR)/$*.s" ]; then \
+		$(FRC) "$(ASM_DIR)/$*.s" -o "$(HEX_DIR)/$*.hex"; \
+	elif [ -f "$(ASM_DIR)/$*.asm" ]; then \
+		$(FRC) "$(ASM_DIR)/$*.asm" -o "$(HEX_DIR)/$*.hex"; \
+	else \
+		echo "[ERR] Assembly source not found: $(ASM_DIR)/$*.s or $(ASM_DIR)/$*.asm"; \
+		exit 1; \
+	fi
 
 encrypt-flow: ## Run the full encryption flow for FILE=<file> from examples/ at ADDRESS=<addr>, producing build/out/enc_FILE.
 	@mkdir -p $(OUT_DIR)
