@@ -39,9 +39,7 @@ El diseño separa claramente la lógica de control, el datapath principal, la me
 
 ## 2. Diagrama general de bloques
 
-<p align="center">
-  <iframe src="docs/Datapath_PGA1.pdf" width="900" height="600"></iframe>
-</p>
+[Datapath](Datapath_PGA1.pdf)
 
 ## 3. Módulo principal `cpu_top.sv`
 
