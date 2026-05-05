@@ -1,0 +1,56 @@
+
+fonc [void] merge([int] *arr, [int] *temp,
+                  [int] left, [int] mid, [int] right) {
+    [int] i = left;
+    [int] j = mid + 1;
+    [int] k = left;
+
+    alors (i <= mid && j <= right) {
+        si (arr@(i) <= arr@(j)) {
+            temp@(k) = arr@(i);
+            i = i + 1;
+        } sinon {
+            temp@(k) = arr@(j);
+            j = j + 1;
+        }
+        k = k + 1;
+    }
+
+    alors (i <= mid) {
+        temp@(k) = arr@(i);
+        i = i + 1;
+        k = k + 1;
+    }
+
+    alors (j <= right) {
+        temp@(k) = arr@(j);
+        j = j + 1;
+        k = k + 1;
+    }
+
+    [int] x = left;
+    alors (x <= right) {
+        arr@(x) = temp@(x);
+        x = x + 1;
+    }
+}
+
+fonc [void] merge_iterative([int] *arr, [int] n) {
+    [int] *temp(64);
+
+    pour ([int] size = 1; size < n; size = size * 2) {
+        pour ([int] left = 0; left < n - 1; left = left + 2 * size) {
+            [int] mid = left + size - 1;
+            [int] right = left + 2 * size - 1;
+
+            si (mid >= n - 1) {
+                suivre;
+            }
+            si (right >= n) {
+                right = n - 1;
+            }
+
+            merge(arr, temp, left, mid, right);
+        }
+    }
+}
