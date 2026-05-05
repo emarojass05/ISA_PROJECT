@@ -28,9 +28,6 @@ GRAMMAR_DIR = src/compiler/grammar
 GENERATED_DIR = src/compiler/generated
 
 GRAMMAR = Language.g4
-FRC_COMPILER = src.compiler.main
-ASM_ENCODER = src/compiler/backend/encoder.py
-ASM_DIR = programs/asm
 HEX_DIR = programs/hex
 
 MEM_DIR = programs/mems
@@ -85,9 +82,6 @@ sv-cpu-exec: $(CPU_SRC) $(TB_DIR)/tb_cpu_program.sv ## Build and run the CPU wit
 		$^
 	$(VVP) $(SIM_BUILD)/cpu_program.vvp
 
-wave-%: $(SIM_BUILD)/%.vcd ## Open '%'.vcd with GTKWave.
-	@$(GTK_WAVE) $^
-
 setup: ## Create the Python .venv, upgrade pip, and install dependencies from requirements.txt.
 	python3 -m venv .venv
 	$(PYTHON) -m ensurepip --upgrade
@@ -115,22 +109,6 @@ $(ANTLR_JAR):
 
 antlr-clear: ## Remove all ANTLR-generated files from src/compiler/generated; usage: make antlr-clear.
 	@rm -rf $(GENERATED_DIR)/*
-
-frc-parse-%: antlr-build ## Parse programs/source/%.fr without compiling it; usage: make frc-parse-NAME.
-	PYTHONPATH=. $(PYTHON) -m $(FRC_COMPILER) $(FRC_SRC_DIR)/$*.fr
-
-frc-build-%: antlr-build ## Compile programs/source/%.fr and save both .asm and .hex outputs; usage: make frc-build-NAME.
-	PYTHONPATH=. $(PYTHON) -m $(FRC_COMPILER) $(FRC_SRC_DIR)/$*.fr -s
-
-frc-debug-%: antlr-build ## Compile programs/source/%.fr with verbose output, AST, and symbol tables; usage: make frc-debug-NAME.
-	PYTHONPATH=. $(PYTHON) -m $(FRC_COMPILER) $(FRC_SRC_DIR)/$*.fr -v -s -t -m
-
-asm-encode-%: ## Encode programs/asm/%.s and print hexadecimal output to stdout; usage: make asm-encode-NAME.
-	$(PYTHON) $(ASM_ENCODER) $*
-
-asm-build-%: ## Encode programs/asm/%.s and write hexadecimal output to programs/hex/%.hex; usage: make asm-build-NAME.
-	@mkdir -p $(HEX_DIR)
-	$(PYTHON) $(ASM_ENCODER) $* > $(HEX_DIR)/$*.hex
 
 encrypt-flow: ## Run the full encryption flow for FILE=<file> from examples/ at ADDRESS=<addr>, producing build/out/enc_FILE.
 	@mkdir -p $(OUT_DIR)
