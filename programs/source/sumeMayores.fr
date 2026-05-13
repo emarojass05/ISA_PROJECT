@@ -1,0 +1,42 @@
+$ Variables globales 
+[int] suma = 0;
+[int] multiplicacion = 1;
+
+$ Funcion auxiliar 
+fonc [int] maximo_lista([int] *lista, [int] tam) {
+    [int] maximo = lista@(0);
+    pour ([int] i = 1; i < tam; i = i + 1) {
+        si (lista@(i) > maximo) {
+            maximo = lista@(i);
+        }
+    }
+    ret maximo;
+}
+
+$ Funcion principal
+fonc [int] sumeMayores([int] *lista, [int] tam) {
+    alors (suma < 100) {
+        [int] valorMaximo = maximo_lista(lista, tam);
+
+        si (valorMaximo / 2 == 5) {
+            valorMaximo = valorMaximo * 2;
+        }
+
+        suma = suma + valorMaximo;
+        multiplicacion = multiplicacion * valorMaximo;
+
+        si (multiplicacion > 500) {
+            multiplicacion = 10;
+        } sinon {
+            multiplicacion = multiplicacion - 10;
+        }
+    }
+
+    ret suma;
+}
+
+fonc [int] main() {
+    [int] *datos = {100, 2, 3, 4, 5};
+    [int] resultado = sumeMayores(datos, 5);
+    ret resultado;
+}

@@ -27,14 +27,20 @@ class CompilerErrorListener(ErrorListener):
 
 
 class SemanticTableBuilder(LanguageVisitor):
-    def __init__(self, symbol_table):
+    def __init__(self, symbol_table, source_file=None, visited_imports=None):
         super().__init__()
         self.symbol_table = symbol_table
+        self.source_file = source_file
+        self.visited_imports = visited_imports if visited_imports is not None else set()
 
     def clean_type(self, type_spec_ctx):
         return type_spec_ctx.getText().replace("[", "").replace("]", "")
 
     def visitProgram(self, ctx):
+        # Primero procesar imports para que sus funciones esten disponibles
+        for import_ctx in ctx.importDecl():
+            self.visit(import_ctx)
+
         for declaration_ctx in ctx.declaration():
             function_ctx = declaration_ctx.functionDecl()
 
@@ -43,6 +49,51 @@ class SemanticTableBuilder(LanguageVisitor):
 
         for declaration_ctx in ctx.declaration():
             self.visit(declaration_ctx)
+
+        return None
+
+    def visitImportDecl(self, ctx):
+        from pathlib import Path
+
+        # Obtener el path del string literal (quitar comillas)
+        raw = ctx.STRING_LITERAL().getText()
+        path_str = raw[1:-1]
+
+        # Resolver relativo al archivo que importa
+        if self.source_file:
+            import_path = Path(self.source_file).parent / path_str
+        else:
+            import_path = Path(path_str)
+
+        if not import_path.exists():
+            import_path = Path(path_str)
+
+        if not import_path.exists():
+            raise Exception(f"Import error: file not found: {path_str!r}")
+
+        real_path = str(import_path.resolve())
+
+        # Evitar imports circulares o duplicados
+        if real_path in self.visited_imports:
+            return None
+
+        self.visited_imports.add(real_path)
+
+        # Parsear y analizar el archivo importado
+        result = parse_file(str(import_path))
+
+        if result is None:
+            raise Exception(f"Import error: failed to parse {path_str!r}")
+
+        tree, _ = result
+
+        # Reutilizar el mismo symbol_table y visited_imports (compartidos)
+        sub_builder = SemanticTableBuilder(
+            symbol_table=self.symbol_table,
+            source_file=str(import_path),
+            visited_imports=self.visited_imports,
+        )
+        sub_builder.visit(tree)
 
         return None
 
@@ -77,7 +128,7 @@ class SemanticTableBuilder(LanguageVisitor):
     def visitFunctionDecl(self, ctx):
         function_name = ctx.ID().getText()
 
-        self.symbol_table.enter_scope(function_name, reset_local=True)
+        self.symbol_table.enter_scope(function_name, reset_local=False)
 
         if ctx.params():
             for param_ctx in ctx.params().param():
@@ -389,9 +440,7 @@ def save_hex_code(hex_code, source_file, output_path=None):
     # Make sure the parent directory exists when -o points elsewhere
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Header line with program size and entry point (ignored by $readmemh)
     with output_file.open("w", encoding="utf-8") as file:
-        file.write(f"// SIZE={len(hex_code)} ENTRY=0x0000\n")
         for code in hex_code:
             file.write(f"{code}\n")
 

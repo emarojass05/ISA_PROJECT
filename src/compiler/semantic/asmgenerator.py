@@ -13,7 +13,7 @@ class AsmGenerator(LanguageVisitor):
         "a0", "a1", "a2", "a3", "a4", "a5"
     ]
 
-    def __init__(self, symbol_table, label_table, fixup_table):
+    def __init__(self, symbol_table, label_table, fixup_table, source_file=None, visited_imports=None):
         super().__init__()
 
         self.symbol_table = symbol_table
@@ -27,6 +27,10 @@ class AsmGenerator(LanguageVisitor):
         self.loop_stack = []
         self.used_registers = set()
         self.return_label_stack = []
+
+        self.source_file = source_file
+        self.visited_imports = visited_imports if visited_imports is not None else set()
+        self.imported_trees = []
 
     def get_asm(self):
         return "\n".join(self.asm_lines)
@@ -131,6 +135,7 @@ class AsmGenerator(LanguageVisitor):
     def visitProgram(self, ctx):
         self.emit_label("ENTRY")
 
+        # Procesar imports: emite sus globales ahora y acumula sus arboles
         for import_ctx in ctx.importDecl():
             self.visit(import_ctx)
 
@@ -154,6 +159,13 @@ class AsmGenerator(LanguageVisitor):
             jump_type="J"
         )
 
+        # Emitir codigo de funciones de archivos importados (recursivo)
+        for imported_tree in self.imported_trees:
+            for declaration_ctx in imported_tree.declaration():
+                if declaration_ctx.functionDecl() is not None:
+                    self.visit(declaration_ctx)
+
+        # Emitir codigo de funciones locales
         for declaration_ctx in ctx.declaration():
             if declaration_ctx.functionDecl() is not None:
                 self.visit(declaration_ctx)
@@ -161,7 +173,52 @@ class AsmGenerator(LanguageVisitor):
         return None
 
     def visitImportDecl(self, ctx):
-        self.emit_comment(f"import ignored: {ctx.getText()}")
+        from pathlib import Path
+        from src.compiler.main import parse_file
+
+        raw = ctx.STRING_LITERAL().getText()
+        path_str = raw[1:-1]
+
+        # Resolver path relativo al archivo actual
+        if self.source_file:
+            import_path = Path(self.source_file).parent / path_str
+        else:
+            import_path = Path(path_str)
+
+        if not import_path.exists():
+            import_path = Path(path_str)
+
+        if not import_path.exists():
+            self.emit_comment(f"import not found: {path_str!r}")
+            return None
+
+        real_path = str(import_path.resolve())
+
+        # Evitar imports circulares/duplicados
+        if real_path in self.visited_imports:
+            return None
+
+        self.visited_imports.add(real_path)
+
+        result = parse_file(str(import_path))
+
+        if result is None:
+            raise Exception(f"Import error: failed to parse {path_str!r}")
+
+        tree, _ = result
+
+        # Guardar el arbol para emitir sus funciones despues de PROGRAM_END
+        self.imported_trees.append(tree)
+
+        # Emitir globales del archivo importado ahora (antes de PROGRAM_END)
+        for decl_ctx in tree.declaration():
+            if decl_ctx.functionDecl() is None:
+                self.visit(decl_ctx)
+
+        # Procesar imports transitivos (el importado puede importar otros)
+        for import_ctx in tree.importDecl():
+            self.visit(import_ctx)
+
         return None
 
     def visitAnnotation(self, ctx):
