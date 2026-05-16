@@ -1,0 +1,6 @@
+fonc [int] sum3([int] a, [int] b, [int] c) {
+    ret a + b + c;
+}
+fonc [int] main() {
+    ret sum3(10, 20, 30);
+}
