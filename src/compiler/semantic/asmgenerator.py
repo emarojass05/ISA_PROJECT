@@ -143,6 +143,12 @@ class AsmGenerator(LanguageVisitor):
     def visitProgram(self, ctx):
         self.emit_label("ENTRY")
 
+        # Initialize stack pointer to top of data memory (DEPTH=65536 words → 0x3FFFC)
+        # Data memory is separate from instruction memory (Harvard architecture).
+        # sp must be set before any function call that uses the stack.
+        self.emit("luhw sp, 0x0003")
+        self.emit("llhw sp, 0xFFFC")
+
         # Procesar imports: emite sus globales ahora y acumula sus arboles
         for import_ctx in ctx.importDecl():
             self.visit(import_ctx)
@@ -674,26 +680,48 @@ class AsmGenerator(LanguageVisitor):
         num_extras = max(0, num_args - num_arg_regs)
         extra_bytes = num_extras * self.WORD_SIZE
 
+        # Step 1: evaluate all arguments FIRST (reads frame locals at correct sp offsets)
+        # Defer sp adjustments until after all arg expressions are evaluated.
+        evaluated_args = []
+        for arg_ctx in arguments:
+            evaluated_args.append(self.visit(arg_ctx))
+
+        # Step 2: push extra args to stack (only shifts sp for overflow args)
         if num_extras > 0:
             self.emit(f"addi sp, sp, -{extra_bytes}")
 
-        for index, arg_ctx in enumerate(arguments):
-            value_register = self.visit(arg_ctx)
-
+        # Step 3: move evaluated arg values into calling-convention registers
+        for index, value_register in enumerate(evaluated_args):
             if index < num_arg_regs:
                 self.emit_move(self.ARG_REGISTERS[index], value_register)
             else:
                 stack_offset = (index - num_arg_regs) * self.WORD_SIZE
                 self.emit(f"sw {value_register}, {stack_offset}(sp)")
-
             self.free_register(value_register)
 
+        # Step 4: caller-save — snapshot live outer-context regs AFTER args freed.
+        # These are temps from the surrounding expression that the callee will clobber.
+        caller_saved = sorted(self.used_registers)
+        save_bytes = len(caller_saved) * self.WORD_SIZE
+        if caller_saved:
+            self.emit(f"addi sp, sp, -{save_bytes}")
+            for i, reg in enumerate(caller_saved):
+                self.emit(f"sw {reg}, {i * self.WORD_SIZE}(sp)")
+
+        # Step 5: call
         self.emit_jump_fixup(
             instruction=f"jal ra, {function_label}",
             label_name=function_label,
             jump_type="JAL"
         )
 
+        # Step 6: restore caller-saved registers
+        if caller_saved:
+            for i, reg in enumerate(caller_saved):
+                self.emit(f"lw {reg}, {i * self.WORD_SIZE}(sp)")
+            self.emit(f"addi sp, sp, {save_bytes}")
+
+        # Step 7: clean up extra-arg stack space
         if num_extras > 0:
             self.emit(f"addi sp, sp, {extra_bytes}")
 
