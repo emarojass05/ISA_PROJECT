@@ -1,0 +1,20 @@
+$ TEST 01: Local variables — each function must use sp-relative addresses,
+$ NOT static addresses. Two functions with locals of the same name
+$ must NOT share the same memory location.
+
+fonc [int] double([int] x) {
+    [int] result = x + x;
+    ret result;
+}
+
+fonc [int] triple([int] x) {
+    [int] result = x + x + x;
+    ret result;
+}
+
+fonc [int] main() {
+    [int] a = 4;
+    [int] b = double(a);
+    [int] c = triple(a);
+    ret b + c;
+}

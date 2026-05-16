@@ -1,0 +1,15 @@
+$ TEST 04: While loop with local accumulator
+
+fonc [int] sum_to([int] n) {
+    [int] total = 0;
+    [int] i = 1;
+    alors (i <= n) {
+        total = total + i;
+        i = i + 1;
+    }
+    ret total;
+}
+
+fonc [int] main() {
+    ret sum_to(10);
+}

@@ -128,7 +128,8 @@ class SemanticTableBuilder(LanguageVisitor):
     def visitFunctionDecl(self, ctx):
         function_name = ctx.ID().getText()
 
-        self.symbol_table.enter_scope(function_name, reset_local=False)
+        # reset_local=True: each function gets a fresh frame starting at offset 4
+        self.symbol_table.enter_scope(function_name, reset_local=True)
 
         if ctx.params():
             for param_ctx in ctx.params().param():
@@ -148,7 +149,15 @@ class SemanticTableBuilder(LanguageVisitor):
 
         self.visit(ctx.block())
 
+        # Capture total frame size BEFORE exiting scope, then store it in the
+        # function symbol so AsmGenerator can allocate the right frame.
+        frame_size = self.symbol_table.next_frame_offset
+
         self.symbol_table.exit_scope()
+
+        _, func_symbol = self.symbol_table.lookup(function_name)
+        if func_symbol is not None:
+            func_symbol["frame_size"] = frame_size
 
         return None
 

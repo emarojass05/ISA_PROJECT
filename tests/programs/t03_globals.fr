@@ -1,0 +1,15 @@
+$ TEST 03: Global variables — must use absolute addresses (0x100+),
+$ not sp-relative. Multiple functions must see the same global.
+
+[int] counter = 0;
+
+fonc [int] increment() {
+    counter = counter + 1;
+    ret counter;
+}
+
+fonc [int] main() {
+    increment();
+    increment();
+    ret counter;
+}

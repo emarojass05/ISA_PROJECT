@@ -1,0 +1,15 @@
+$ TEST 05: If/else branches
+
+fonc [int] abs_val([int] x) {
+    si (x < 0) {
+        ret 0 - x;
+    } sinon {
+        ret x;
+    }
+}
+
+fonc [int] main() {
+    [int] a = abs_val(0 - 7);
+    [int] b = abs_val(3);
+    ret a + b;
+}
