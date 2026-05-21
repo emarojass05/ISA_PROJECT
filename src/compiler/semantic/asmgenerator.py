@@ -835,7 +835,6 @@ class AsmGenerator(LanguageVisitor):
 
     def emit_comparison(self, left_register, right_register, branch_instruction):
         result_register = self.allocate_register()
-
         true_label = self.new_label("CMP_TRUE")
         end_label = self.new_label("CMP_END")
 
@@ -844,7 +843,7 @@ class AsmGenerator(LanguageVisitor):
         self.emit_jump_fixup(
             instruction=f"{branch_instruction} {left_register}, {right_register}, {true_label}",
             label_name=true_label,
-            jump_type=branch_instruction.upper()
+            jump_type="BRANCH"
         )
 
         self.emit_jump_fixup(
@@ -855,7 +854,6 @@ class AsmGenerator(LanguageVisitor):
 
         self.emit_label(true_label)
         self.emit_load_immediate(result_register, 1)
-
         self.emit_label(end_label)
 
         self.free_register(left_register)
