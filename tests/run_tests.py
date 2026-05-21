@@ -22,9 +22,9 @@ import re
 # --------------------------------------------------------------------------- #
 
 REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-VENV_PY     = os.path.join(REPO_ROOT, ".venv", "bin", "python3.12")
-ANTLR_SITE  = os.path.join(REPO_ROOT, ".venv", "lib", "python3.12", "site-packages")
-PROGRAMS    = os.path.join(REPO_ROOT, "tests", "programs")
+VENV_PY     = os.path.join(REPO_ROOT, ".venv", "bin", "python")
+ANTLR_SITE  = os.path.join(REPO_ROOT, ".venv", "lib", "python", "site-packages")
+PROGRAMS    = os.path.join(REPO_ROOT, "programs", "source", "tests")
 
 # --------------------------------------------------------------------------- #
 # Helpers

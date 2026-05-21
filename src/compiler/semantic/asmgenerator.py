@@ -375,6 +375,29 @@ class AsmGenerator(LanguageVisitor):
 
         return None
 
+    def visitForUpdate(self, ctx):
+        # forUpdate : assignmentNoSemi | ID incrementOp
+        if ctx.assignmentNoSemi():
+            return self.visit(ctx.assignmentNoSemi())
+
+        # ID incrementOp case (e.g. i++, i--)
+        name = ctx.ID().getText()
+        symbol = self.get_symbol(name, ctx.ID().getSymbol().line)
+        value_register = self.allocate_register()
+        self.emit_load_symbol(value_register, symbol)
+
+        operation = ctx.incrementOp().getText()
+        if operation == "++":
+            self.emit(f"addi {value_register}, {value_register}, 1")
+        elif operation == "--":
+            self.emit(f"addi {value_register}, {value_register}, -1")
+        else:
+            raise Exception(f"Unsupported increment operator '{operation}'")
+
+        self.emit_store_symbol(value_register, symbol)
+        self.free_register(value_register)
+        return None
+
     def visitAssignmentNoSemi(self, ctx):
         if ctx.ID():
             name = ctx.ID().getText()
