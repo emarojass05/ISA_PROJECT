@@ -1,0 +1,9 @@
+fonc [int] fib([int] n) {
+    si (n <= 1) {
+        ret n;
+    }
+    ret fib(n - 1) + fib(n - 2);
+}
+fonc [int] main() {
+    ret fib(7);
+}

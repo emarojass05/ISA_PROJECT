@@ -1,0 +1,32 @@
+$ Variable global 
+[int] suma = 0;
+
+$ Funcion recursiva: es n primo? (revisa dividiendo desde 2 en adelante)
+fonc [int] es_primo([int] n, [int] divisor) {
+    si (n <= 1) {
+        ret 0;
+    }
+    si (divisor * divisor > n) {
+        ret 1;
+    }
+    si (n % divisor == 0) {
+        ret 0;
+    }
+    ret es_primo(n, divisor + 1);
+}
+
+$ Recorre el arreglo y suma los primos
+fonc [int] sume([int] *lista, [int] tam) {
+    pour ([int] i = 0; i < tam; i = i + 1) {
+        si (es_primo(lista@(i), 2) == 1) {
+            suma = suma + lista@(i);
+        }
+    }
+    ret suma;
+}
+
+fonc [int] main() {
+    [int] *datos = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11};
+    [int] resultado = sume(datos, 10);
+    ret resultado;
+}

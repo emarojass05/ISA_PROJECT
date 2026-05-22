@@ -13,7 +13,7 @@ class AsmGenerator(LanguageVisitor):
         "a0", "a1", "a2", "a3", "a4", "a5"
     ]
 
-    def __init__(self, symbol_table, label_table, fixup_table):
+    def __init__(self, symbol_table, label_table, fixup_table, source_file=None, visited_imports=None):
         super().__init__()
 
         self.symbol_table = symbol_table
@@ -27,6 +27,10 @@ class AsmGenerator(LanguageVisitor):
         self.loop_stack = []
         self.used_registers = set()
         self.return_label_stack = []
+
+        self.source_file = source_file
+        self.visited_imports = visited_imports if visited_imports is not None else set()
+        self.imported_trees = []
 
     def get_asm(self):
         return "\n".join(self.asm_lines)
@@ -100,20 +104,28 @@ class AsmGenerator(LanguageVisitor):
         self.emit(f"addi {destination}, {source}, 0")
 
     def emit_load_symbol(self, destination, symbol):
-        address_register = self.allocate_register()
-
-        self.emit_load_immediate(address_register, symbol["address"])
-        self.emit(f"lw {destination}, 0({address_register})")
-
-        self.free_register(address_register)
+        if symbol.get("is_local"):
+            # Local variable: sp-relative frame access (no temp register needed)
+            offset = symbol["address"]
+            self.emit(f"lw {destination}, {offset}(sp)")
+        else:
+            # Global variable: load absolute address into temp register, then load
+            address_register = self.allocate_register()
+            self.emit_load_immediate(address_register, symbol["address"])
+            self.emit(f"lw {destination}, 0({address_register})")
+            self.free_register(address_register)
 
     def emit_store_symbol(self, source, symbol):
-        address_register = self.allocate_register()
-
-        self.emit_load_immediate(address_register, symbol["address"])
-        self.emit(f"sw {source}, 0({address_register})")
-
-        self.free_register(address_register)
+        if symbol.get("is_local"):
+            # Local variable: sp-relative frame store (no temp register needed)
+            offset = symbol["address"]
+            self.emit(f"sw {source}, {offset}(sp)")
+        else:
+            # Global variable: load absolute address into temp register, then store
+            address_register = self.allocate_register()
+            self.emit_load_immediate(address_register, symbol["address"])
+            self.emit(f"sw {source}, 0({address_register})")
+            self.free_register(address_register)
 
     def emit_return_jump(self):
         if not self.return_label_stack:
@@ -131,6 +143,13 @@ class AsmGenerator(LanguageVisitor):
     def visitProgram(self, ctx):
         self.emit_label("ENTRY")
 
+        # Initialize stack pointer to top of data memory (DEPTH=65536 words → 0x3FFFC)
+        # Data memory is separate from instruction memory (Harvard architecture).
+        # sp must be set before any function call that uses the stack.
+        self.emit("luhw sp, 0x0003")
+        self.emit("llhw sp, 0xFFFC")
+
+        # Procesar imports: emite sus globales ahora y acumula sus arboles
         for import_ctx in ctx.importDecl():
             self.visit(import_ctx)
 
@@ -154,6 +173,13 @@ class AsmGenerator(LanguageVisitor):
             jump_type="J"
         )
 
+        # Emitir codigo de funciones de archivos importados (recursivo)
+        for imported_tree in self.imported_trees:
+            for declaration_ctx in imported_tree.declaration():
+                if declaration_ctx.functionDecl() is not None:
+                    self.visit(declaration_ctx)
+
+        # Emitir codigo de funciones locales
         for declaration_ctx in ctx.declaration():
             if declaration_ctx.functionDecl() is not None:
                 self.visit(declaration_ctx)
@@ -161,7 +187,52 @@ class AsmGenerator(LanguageVisitor):
         return None
 
     def visitImportDecl(self, ctx):
-        self.emit_comment(f"import ignored: {ctx.getText()}")
+        from pathlib import Path
+        from src.compiler.main import parse_file
+
+        raw = ctx.STRING_LITERAL().getText()
+        path_str = raw[1:-1]
+
+        # Resolver path relativo al archivo actual
+        if self.source_file:
+            import_path = Path(self.source_file).parent / path_str
+        else:
+            import_path = Path(path_str)
+
+        if not import_path.exists():
+            import_path = Path(path_str)
+
+        if not import_path.exists():
+            self.emit_comment(f"import not found: {path_str!r}")
+            return None
+
+        real_path = str(import_path.resolve())
+
+        # Evitar imports circulares/duplicados
+        if real_path in self.visited_imports:
+            return None
+
+        self.visited_imports.add(real_path)
+
+        result = parse_file(str(import_path))
+
+        if result is None:
+            raise Exception(f"Import error: failed to parse {path_str!r}")
+
+        tree, _ = result
+
+        # Guardar el arbol para emitir sus funciones despues de PROGRAM_END
+        self.imported_trees.append(tree)
+
+        # Emitir globales del archivo importado ahora (antes de PROGRAM_END)
+        for decl_ctx in tree.declaration():
+            if decl_ctx.functionDecl() is None:
+                self.visit(decl_ctx)
+
+        # Procesar imports transitivos (el importado puede importar otros)
+        for import_ctx in tree.importDecl():
+            self.visit(import_ctx)
+
         return None
 
     def visitAnnotation(self, ctx):
@@ -178,33 +249,47 @@ class AsmGenerator(LanguageVisitor):
         function_symbol = self.get_symbol(function_name)
         function_symbol["address"] = self.current_pc()
 
+        # frame_size was calculated by SemanticTableBuilder and stored in the
+        # function symbol. It covers: sp+0 (saved ra) + all params + all locals.
+        # Minimum frame size is 4 (just the saved ra slot).
+        frame_size = function_symbol.get("frame_size", 4)
+
         self.return_label_stack.append(return_label)
 
+        # Enter scope without resetting: addresses already assigned by semantic pass
         self.symbol_table.enter_scope(function_name, reset_local=False)
 
-        self.emit("addi sp, sp, -4")
-        self.emit("sw ra, 0(sp)")
+        # --- Prologue ---
+        # Allocate full frame and save return address at sp+0
+        self.emit(f"addi sp, sp, -{frame_size}")
+        self.emit(f"sw ra, 0(sp)")
 
+        # Store incoming arguments into their frame slots.
+        # Params 0..5 arrive in a0..a5; extras arrive on the caller's stack above
+        # our frame (at sp+frame_size, sp+frame_size+4, ...).
         parameters = function_symbol.get("parameters", [])
+        num_arg_regs = len(self.ARG_REGISTERS)
 
         for index, parameter in enumerate(parameters):
             parameter_symbol = self.get_symbol(parameter["name"])
 
-            if index < len(self.ARG_REGISTERS):
+            if index < num_arg_regs:
                 self.emit_store_symbol(self.ARG_REGISTERS[index], parameter_symbol)
             else:
-                stack_offset = 4 + (index - len(self.ARG_REGISTERS)) * self.WORD_SIZE
+                # Extra arg was pushed by caller before the call; it now lives at
+                # sp + frame_size + (index - num_arg_regs) * WORD_SIZE
+                extra_offset = frame_size + (index - num_arg_regs) * self.WORD_SIZE
                 tmp_register = self.allocate_register()
-                self.emit(f"lw {tmp_register}, {stack_offset}(sp)")
+                self.emit(f"lw {tmp_register}, {extra_offset}(sp)")
                 self.emit_store_symbol(tmp_register, parameter_symbol)
                 self.free_register(tmp_register)
 
         self.visit(ctx.block())
 
+        # --- Epilogue ---
         self.emit_label(return_label)
-
-        self.emit("lw ra, 0(sp)")
-        self.emit("addi sp, sp, 4")
+        self.emit(f"lw ra, 0(sp)")
+        self.emit(f"addi sp, sp, {frame_size}")
         self.emit("jr ra")
 
         self.symbol_table.exit_scope()
@@ -243,14 +328,19 @@ class AsmGenerator(LanguageVisitor):
 
             for index, expr_ctx in enumerate(expressions):
                 value_register = self.visit(expr_ctx)
-                address_register = self.allocate_register()
 
-                element_address = symbol["address"] + index * self.WORD_SIZE
+                if symbol.get("is_local"):
+                    # Local array: store directly via sp-relative offset
+                    element_offset = symbol["address"] + index * self.WORD_SIZE
+                    self.emit(f"sw {value_register}, {element_offset}(sp)")
+                else:
+                    # Global array: compute absolute address then store
+                    address_register = self.allocate_register()
+                    element_address = symbol["address"] + index * self.WORD_SIZE
+                    self.emit_load_immediate(address_register, element_address)
+                    self.emit(f"sw {value_register}, 0({address_register})")
+                    self.free_register(address_register)
 
-                self.emit_load_immediate(address_register, element_address)
-                self.emit(f"sw {value_register}, 0({address_register})")
-
-                self.free_register(address_register)
                 self.free_register(value_register)
 
         return None
@@ -283,6 +373,29 @@ class AsmGenerator(LanguageVisitor):
         self.emit_store_symbol(value_register, symbol)
         self.free_register(value_register)
 
+        return None
+
+    def visitForUpdate(self, ctx):
+        # forUpdate : assignmentNoSemi | ID incrementOp
+        if ctx.assignmentNoSemi():
+            return self.visit(ctx.assignmentNoSemi())
+
+        # ID incrementOp case (e.g. i++, i--)
+        name = ctx.ID().getText()
+        symbol = self.get_symbol(name, ctx.ID().getSymbol().line)
+        value_register = self.allocate_register()
+        self.emit_load_symbol(value_register, symbol)
+
+        operation = ctx.incrementOp().getText()
+        if operation == "++":
+            self.emit(f"addi {value_register}, {value_register}, 1")
+        elif operation == "--":
+            self.emit(f"addi {value_register}, {value_register}, -1")
+        else:
+            raise Exception(f"Unsupported increment operator '{operation}'")
+
+        self.emit_store_symbol(value_register, symbol)
+        self.free_register(value_register)
         return None
 
     def visitAssignmentNoSemi(self, ctx):
@@ -563,7 +676,12 @@ class AsmGenerator(LanguageVisitor):
             register = self.allocate_register()
 
             if symbol["kind"] == "array":
-                self.emit_load_immediate(register, symbol["address"])
+                if symbol.get("is_local"):
+                    # Local array: base address = sp + frame_offset
+                    self.emit(f"addi {register}, sp, {symbol['address']}")
+                else:
+                    # Global array: load absolute address
+                    self.emit_load_immediate(register, symbol["address"])
             else:
                 self.emit_load_symbol(register, symbol)
 
@@ -585,26 +703,48 @@ class AsmGenerator(LanguageVisitor):
         num_extras = max(0, num_args - num_arg_regs)
         extra_bytes = num_extras * self.WORD_SIZE
 
+        # Step 1: evaluate all arguments FIRST (reads frame locals at correct sp offsets)
+        # Defer sp adjustments until after all arg expressions are evaluated.
+        evaluated_args = []
+        for arg_ctx in arguments:
+            evaluated_args.append(self.visit(arg_ctx))
+
+        # Step 2: push extra args to stack (only shifts sp for overflow args)
         if num_extras > 0:
             self.emit(f"addi sp, sp, -{extra_bytes}")
 
-        for index, arg_ctx in enumerate(arguments):
-            value_register = self.visit(arg_ctx)
-
+        # Step 3: move evaluated arg values into calling-convention registers
+        for index, value_register in enumerate(evaluated_args):
             if index < num_arg_regs:
                 self.emit_move(self.ARG_REGISTERS[index], value_register)
             else:
                 stack_offset = (index - num_arg_regs) * self.WORD_SIZE
                 self.emit(f"sw {value_register}, {stack_offset}(sp)")
-
             self.free_register(value_register)
 
+        # Step 4: caller-save — snapshot live outer-context regs AFTER args freed.
+        # These are temps from the surrounding expression that the callee will clobber.
+        caller_saved = sorted(self.used_registers)
+        save_bytes = len(caller_saved) * self.WORD_SIZE
+        if caller_saved:
+            self.emit(f"addi sp, sp, -{save_bytes}")
+            for i, reg in enumerate(caller_saved):
+                self.emit(f"sw {reg}, {i * self.WORD_SIZE}(sp)")
+
+        # Step 5: call
         self.emit_jump_fixup(
             instruction=f"jal ra, {function_label}",
             label_name=function_label,
             jump_type="JAL"
         )
 
+        # Step 6: restore caller-saved registers
+        if caller_saved:
+            for i, reg in enumerate(caller_saved):
+                self.emit(f"lw {reg}, {i * self.WORD_SIZE}(sp)")
+            self.emit(f"addi sp, sp, {save_bytes}")
+
+        # Step 7: clean up extra-arg stack space
         if num_extras > 0:
             self.emit(f"addi sp, sp, {extra_bytes}")
 
@@ -630,8 +770,14 @@ class AsmGenerator(LanguageVisitor):
         address_register = self.allocate_register()
 
         if symbol["kind"] == "array":
-            self.emit_load_immediate(address_register, symbol["address"])
+            if symbol.get("is_local"):
+                # Local array: base = sp + frame_offset
+                self.emit(f"addi {address_register}, sp, {symbol['address']}")
+            else:
+                # Global array: absolute address
+                self.emit_load_immediate(address_register, symbol["address"])
         else:
+            # Pointer variable: load its value (the address it points to)
             self.emit_load_symbol(address_register, symbol)
 
         for expr_ctx in ctx.expr():
@@ -689,7 +835,6 @@ class AsmGenerator(LanguageVisitor):
 
     def emit_comparison(self, left_register, right_register, branch_instruction):
         result_register = self.allocate_register()
-
         true_label = self.new_label("CMP_TRUE")
         end_label = self.new_label("CMP_END")
 
@@ -698,7 +843,7 @@ class AsmGenerator(LanguageVisitor):
         self.emit_jump_fixup(
             instruction=f"{branch_instruction} {left_register}, {right_register}, {true_label}",
             label_name=true_label,
-            jump_type=branch_instruction.upper()
+            jump_type="BRANCH"
         )
 
         self.emit_jump_fixup(
@@ -709,7 +854,6 @@ class AsmGenerator(LanguageVisitor):
 
         self.emit_label(true_label)
         self.emit_load_immediate(result_register, 1)
-
         self.emit_label(end_label)
 
         self.free_register(left_register)

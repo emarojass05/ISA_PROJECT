@@ -1,0 +1,19 @@
+$ utils.fr - funciones utilitarias importables
+
+fonc [int] suma([int] a, [int] b) {
+    ret a + b;
+}
+
+fonc [int] maximo([int] a, [int] b) {
+    si (a > b) {
+        ret a;
+    }
+    ret b;
+}
+
+fonc [int] es_par([int] n) {
+    si (n % 2 == 0) {
+        ret 1;
+    }
+    ret 0;
+}

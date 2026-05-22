@@ -1,0 +1,24 @@
+$ divisores.fr
+$ Funcion que llena un arreglo con los divisores de n.
+$ Retorna la cantidad de divisores encontrados.
+fonc [int] divisores([int] n, [int] *resultado) {
+    [int] count = 0;
+    pour ([int] i = 1; i <= n; i = i + 1) {
+        si (n % i == 0) {
+            resultado@(count) = i;
+            count = count + 1;
+        }
+    }
+    ret count;
+}
+
+$ Verifica que el pointer pasado apunte correctamente y que
+$ los divisores se puedan leer de vuelta sin explotar.
+fonc [int] main() {
+    [int] *lista(32);
+    [int] num_divs = divisores(12, lista);
+    $ lista@(0)=1, lista@(1)=2, lista@(2)=3,
+    $ lista@(3)=4, lista@(4)=6, lista@(5)=12
+    $ num_divs deberia ser 6
+    ret num_divs;
+}

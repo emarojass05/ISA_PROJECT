@@ -1,0 +1,8 @@
+invoquer "utils.fr"
+
+fonc [int] main() {
+    [int] x = suma(3, 4);
+    [int] y = maximo(10, 7);
+    [int] z = es_par(8);
+    ret x;
+}

@@ -1,0 +1,14 @@
+fonc [void] num_1_n([int] n, [int] *lista) {
+    pour ([int] i = 0; i < n; i++) {
+        lista@(i) = i + 1;
+    }
+    ret;
+}
+
+fonc [void] main() {
+    [int] *lista1(10);
+    [int] *lista2(100);
+    num_1_n(10, lista1);
+    num_1_n(100, lista2);
+    ret;
+}

@@ -45,8 +45,6 @@ def save_hex_code(hex_code, source_file, output_path=None):
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     with output_file.open("w", encoding="utf-8") as file:
-        file.write(f"// SIZE={len(hex_code)} ENTRY=0x0000\n")
-
         for code in hex_code:
             file.write(f"{code}\n")
 
@@ -132,7 +130,7 @@ def compile_fr_source(args):
     fixup_table = FixupTable()
 
     try:
-        semantic_builder = SemanticTableBuilder(symbol_table)
+        semantic_builder = SemanticTableBuilder(symbol_table, source_file=source_file)
         semantic_builder.visit(tree)
 
         if args.verbose:
@@ -143,6 +141,7 @@ def compile_fr_source(args):
             symbol_table=symbol_table,
             label_table=label_table,
             fixup_table=fixup_table,
+            source_file=source_file,
         )
         asm_generator.visit(tree)
         asm_source = asm_generator.get_asm()

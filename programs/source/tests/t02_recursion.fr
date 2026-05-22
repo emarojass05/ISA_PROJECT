@@ -1,0 +1,13 @@
+$ TEST 02: Recursion — stack frame must be saved/restored correctly
+$ across recursive calls. factorial(5) = 120.
+
+fonc [int] factorial([int] n) {
+    si (n <= 1) {
+        ret 1;
+    }
+    ret n * factorial(n - 1);
+}
+
+fonc [int] main() {
+    ret factorial(5);
+}
