@@ -17,6 +17,7 @@ from src.compiler.semantic.asmgenerator import AsmGenerator
 from src.compiler.backend.encoder import assemble
 
 from src.compiler.ir.ir_generator import IRGenerator
+from src.compiler.ir.cfg import CFG
 
 
 class CompilerErrorListener(ErrorListener):
@@ -379,6 +380,10 @@ def main():
         "--ir-save", action="store_true",
         help="Save the IR to build/bin/<name>.ir alongside the binary"
     )
+    parser.add_argument(
+        "--cfg", action="store_true",
+        help="Build and print the CFG (basic blocks) for each function"
+    )
 
     args = parser.parse_args()
     source_file = args.source
@@ -411,7 +416,7 @@ def main():
 
         # ── IR generation (optional, does not replace ASM pipeline) ──────────
         ir_program = None
-        if args.ir or args.ir_save:
+        if args.ir or args.ir_save or args.cfg:
             if args.verbose:
                 print("[INFO] Phase 3b: IR generation...")
             ir_generator = IRGenerator(
@@ -482,6 +487,12 @@ def main():
         ir_file = output_dir / f"{Path(source_file).stem}.ir"
         ir_file.write_text(str(ir_program), encoding="utf-8")
         print(f"[OK] IR saved in {ir_file}")
+
+    if args.cfg and ir_program is not None:
+        print("\n========== CFG ==========")
+        for ir_func in ir_program.functions:
+            cfg = CFG.build_from_function(ir_func)
+            print(cfg)
 
 
 if __name__ == "__main__":
