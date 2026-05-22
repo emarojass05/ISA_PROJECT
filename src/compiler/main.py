@@ -16,6 +16,9 @@ from src.compiler.semantic.asmgenerator import AsmGenerator
 
 from src.compiler.backend.encoder import assemble
 
+from src.compiler.ir.ir_generator import IRGenerator
+from src.compiler.ir.cfg import CFG
+
 
 class CompilerErrorListener(ErrorListener):
     def __init__(self):
@@ -369,6 +372,18 @@ def main():
         "-m", "--map", action="store_true",
         help="Print symbol table, reference table, labels and fixups"
     )
+    parser.add_argument(
+        "--ir", action="store_true",
+        help="Generate and print the IR (three-address code) for this file"
+    )
+    parser.add_argument(
+        "--ir-save", action="store_true",
+        help="Save the IR to build/bin/<name>.ir alongside the binary"
+    )
+    parser.add_argument(
+        "--cfg", action="store_true",
+        help="Build and print the CFG (basic blocks) for each function"
+    )
 
     args = parser.parse_args()
     source_file = args.source
@@ -398,6 +413,21 @@ def main():
 
         if args.verbose:
             print("[OK] Symbol table built")
+
+        # ── IR generation (optional, does not replace ASM pipeline) ──────────
+        ir_program = None
+        if args.ir or args.ir_save or args.cfg:
+            if args.verbose:
+                print("[INFO] Phase 3b: IR generation...")
+            ir_generator = IRGenerator(
+                symbol_table=symbol_table,
+                source_file=source_file,
+            )
+            ir_generator.visit(tree)
+            ir_program = ir_generator.get_ir()
+            if args.verbose:
+                print("[OK] IR generated")
+        # ─────────────────────────────────────────────────────────────────────
 
         if args.verbose:
             print("[INFO] Phase 4: Assembly code generation...")
@@ -446,6 +476,23 @@ def main():
     if args.asm:
         asm_file = save_asm_code(asm_source, source_file, args.output)
         print(f"[OK] ASM saved in {asm_file}")
+
+    if args.ir and ir_program is not None:
+        print("\n========== IR ==========")
+        print(ir_program)
+
+    if args.ir_save and ir_program is not None:
+        output_dir = Path("build") / "bin"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        ir_file = output_dir / f"{Path(source_file).stem}.ir"
+        ir_file.write_text(str(ir_program), encoding="utf-8")
+        print(f"[OK] IR saved in {ir_file}")
+
+    if args.cfg and ir_program is not None:
+        print("\n========== CFG ==========")
+        for ir_func in ir_program.functions:
+            cfg = CFG.build_from_function(ir_func)
+            print(cfg)
 
 
 if __name__ == "__main__":

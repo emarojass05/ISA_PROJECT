@@ -1,0 +1,582 @@
+"""
+ir_generator.py — Visitor que recorre el AST y genera IR de tres direcciones.
+
+Diferencias clave con AsmGenerator:
+  - No hay registros físicos: usa temporales abstractos (_t0, _t1, ...)
+  - No hay manejo de frames ni calling conventions
+  - Las variables se nombran por su nombre en la tabla de símbolos
+  - El resultado es un IRProgram listo para que los passes de optimización trabajen
+
+Convenciones:
+  - Temporales del compilador: _t0, _t1, _t2, ...
+  - Variables locales/parámetros: se usan por su nombre (n, acc, i, ...)
+  - Variables globales: se prefijan con @ en IRLoad/IRStore (@contador)
+  - El backend (ir → asm) traduce estas convenciones a ensamblador real
+"""
+
+from __future__ import annotations
+
+from src.compiler.generated.LanguageVisitor import LanguageVisitor
+from src.compiler.ir.ir_types import (
+    BinOp, UnOp,
+    IRBinOp, IRUnOp, IRCopy, IRLoad, IRStore,
+    IRLabel, IRGoto, IRIfTrue, IRIfFalse,
+    IRParam, IRCall, IRReturn,
+)
+from src.compiler.ir.ir_program import IRFunction, IRProgram
+
+
+# ---------------------------------------------------------------------------
+# Tabla de operadores fuente → BinOp
+# ---------------------------------------------------------------------------
+
+_OP_MAP: dict[str, BinOp] = {
+    "+":  BinOp.ADD,
+    "-":  BinOp.SUB,
+    "*":  BinOp.MUL,
+    "/":  BinOp.DIV,
+    "%":  BinOp.MOD,
+    "&":  BinOp.AND,
+    "|":  BinOp.OR,
+    "^":  BinOp.XOR,
+    "<<": BinOp.SHL,
+    ">>": BinOp.SHR,
+    "==": BinOp.EQ,
+    "!=": BinOp.NEQ,
+    ">":  BinOp.GT,
+    "<":  BinOp.LT,
+    ">=": BinOp.GE,
+    "<=": BinOp.LE,
+    "&&": BinOp.AND,
+    "||": BinOp.OR,
+}
+
+WORD_SIZE = 4  # bytes por palabra, igual que la ISA GAEM
+
+
+# ---------------------------------------------------------------------------
+# IRGenerator
+# ---------------------------------------------------------------------------
+
+class IRGenerator(LanguageVisitor):
+    """
+    Recorre el AST producido por ANTLR4 y genera un IRProgram.
+
+    Uso:
+        gen = IRGenerator(symbol_table)
+        gen.visit(tree)
+        ir_program = gen.get_ir()
+    """
+
+    def __init__(self, symbol_table, source_file=None, visited_imports=None):
+        super().__init__()
+        self.symbol_table    = symbol_table
+        self.ir_program      = IRProgram()
+        self.current_func    = None          # IRFunction activa
+        self.temp_counter    = 0
+        self.label_counter   = 0
+        self.loop_stack      = []            # para continue/break
+        self.source_file     = source_file
+        self.visited_imports = visited_imports if visited_imports is not None else set()
+        self.imported_trees  = []
+
+    def get_ir(self) -> IRProgram:
+        return self.ir_program
+
+    # -----------------------------------------------------------------------
+    # Helpers internos
+    # -----------------------------------------------------------------------
+
+    def _new_temp(self) -> str:
+        name = f"_t{self.temp_counter}"
+        self.temp_counter += 1
+        return name
+
+    def _new_label(self, prefix: str) -> str:
+        name = f"{prefix}_{self.label_counter}"
+        self.label_counter += 1
+        return name
+
+    def _emit(self, instr) -> None:
+        self.current_func.emit(instr)
+
+    def _get_symbol(self, name: str, line=None):
+        _, symbol = self.symbol_table.lookup(name)
+        if symbol is None:
+            msg = f"Symbol '{name}' not declared"
+            if line is not None:
+                msg = f"Error line {line}: {msg}"
+            raise Exception(msg)
+        return symbol
+
+    def _is_local(self, symbol: dict) -> bool:
+        return symbol.get("is_local", False) or symbol.get("kind") == "parameter"
+
+    def _emit_load(self, dest: str, symbol: dict) -> None:
+        """
+        Carga el valor de una variable en el temporal 'dest'.
+        - Local/parámetro  →  IRCopy(dest, nombre)
+        - Global           →  IRLoad(dest, "@nombre", 0)
+        """
+        if self._is_local(symbol):
+            self._emit(IRCopy(dest, symbol["name"]))
+        else:
+            self._emit(IRLoad(dest, f"@{symbol['name']}", 0))
+
+    def _emit_store(self, src: str, symbol: dict) -> None:
+        """
+        Guarda el valor en 'src' dentro de la variable.
+        - Local/parámetro  →  IRCopy(nombre, src)
+        - Global           →  IRStore("@nombre", 0, src)
+        """
+        if self._is_local(symbol):
+            self._emit(IRCopy(symbol["name"], src))
+        else:
+            self._emit(IRStore(f"@{symbol['name']}", 0, src))
+
+    # -----------------------------------------------------------------------
+    # Programa e imports
+    # -----------------------------------------------------------------------
+
+    def visitProgram(self, ctx):
+        # 1) Procesar imports primero
+        for imp in ctx.importDecl():
+            self.visit(imp)
+
+        # 2) Declaraciones globales (variables/arrays, no funciones)
+        for decl in ctx.declaration():
+            if decl.functionDecl() is None:
+                self.visit(decl)
+
+        # 3) Funciones importadas
+        for tree in self.imported_trees:
+            for decl in tree.declaration():
+                if decl.functionDecl() is not None:
+                    self.visit(decl)
+
+        # 4) Funciones locales
+        for decl in ctx.declaration():
+            if decl.functionDecl() is not None:
+                self.visit(decl)
+
+        return None
+
+    def visitImportDecl(self, ctx):
+        from pathlib import Path
+        from src.compiler.main import parse_file
+
+        raw      = ctx.STRING_LITERAL().getText()
+        path_str = raw[1:-1]
+
+        if self.source_file:
+            import_path = Path(self.source_file).parent / path_str
+        else:
+            import_path = Path(path_str)
+
+        if not import_path.exists():
+            import_path = Path(path_str)
+        if not import_path.exists():
+            return None
+
+        real_path = str(import_path.resolve())
+        if real_path in self.visited_imports:
+            return None
+
+        self.visited_imports.add(real_path)
+
+        result = parse_file(str(import_path))
+        if result is None:
+            raise Exception(f"Import error: failed to parse {path_str!r}")
+
+        tree, _ = result
+        self.imported_trees.append(tree)
+
+        for decl in tree.declaration():
+            if decl.functionDecl() is None:
+                self.visit(decl)
+
+        for imp in tree.importDecl():
+            self.visit(imp)
+
+        return None
+
+    def visitAnnotation(self, ctx):
+        return None
+
+    # -----------------------------------------------------------------------
+    # Declaración de funciones
+    # -----------------------------------------------------------------------
+
+    def visitFunctionDecl(self, ctx):
+        func_name   = ctx.ID().getText()
+        func_symbol = self._get_symbol(func_name)
+
+        params      = [p["name"] for p in func_symbol.get("parameters", [])]
+        return_type = func_symbol.get("type", "void")
+
+        ir_func = IRFunction(name=func_name, params=params, return_type=return_type)
+
+        # Guardamos el contexto previo para soportar funciones anidadas (edge case)
+        prev_func        = self.current_func
+        self.current_func = ir_func
+
+        self._emit(IRLabel(f"FUNC_{func_name}"))
+
+        self.symbol_table.enter_scope(func_name, reset_local=False)
+        self.visit(ctx.block())
+        self.symbol_table.exit_scope()
+
+        self.ir_program.add_function(ir_func)
+        self.current_func = prev_func
+
+        return None
+
+    # -----------------------------------------------------------------------
+    # Declaraciones de variables y arrays
+    # -----------------------------------------------------------------------
+
+    def visitVarDecl(self, ctx):
+        # Variables globales no generan IR: sus valores los maneja el backend
+        if self.current_func is None:
+            return None
+        name   = ctx.ID().getText()
+        symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
+        temp   = self.visit(ctx.expr())
+        self._emit_store(temp, symbol)
+        return None
+
+    def visitVarDeclNoSemi(self, ctx):
+        # Variables globales no generan IR: sus valores los maneja el backend
+        if self.current_func is None:
+            return None
+        name   = ctx.ID().getText()
+        symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
+        temp   = self.visit(ctx.expr())
+        self._emit_store(temp, symbol)
+        return None
+
+    def visitArrayDecl(self, ctx):
+        # Arrays globales no generan IR: sus valores los maneja el backend
+        if self.current_func is None:
+            return None
+        name   = ctx.ID().getText()
+        symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
+
+        if ctx.arrayLiteral():
+            base = name if self._is_local(symbol) else f"@{name}"
+            for index, expr_ctx in enumerate(ctx.arrayLiteral().expr()):
+                temp = self.visit(expr_ctx)
+                self._emit(IRStore(base, index * WORD_SIZE, temp))
+
+        return None
+
+    # -----------------------------------------------------------------------
+    # Asignaciones
+    # -----------------------------------------------------------------------
+
+    def visitAssignment(self, ctx):
+        name   = ctx.ID().getText()
+        symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
+
+        if ctx.incrementOp():
+            current = self._new_temp()
+            self._emit_load(current, symbol)
+            result = self._new_temp()
+            if ctx.incrementOp().getText() == "++":
+                self._emit(IRBinOp(result, current, BinOp.ADD, "1"))
+            else:
+                self._emit(IRBinOp(result, current, BinOp.SUB, "1"))
+            self._emit_store(result, symbol)
+            return None
+
+        temp = self.visit(ctx.expr())
+        self._emit_store(temp, symbol)
+        return None
+
+    def visitAssignmentNoSemi(self, ctx):
+        if ctx.ID():
+            name   = ctx.ID().getText()
+            symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
+            temp   = self.visit(ctx.expr())
+            self._emit_store(temp, symbol)
+            return None
+
+        if ctx.indexedAccess():
+            addr = self._emit_indexed_address(ctx.indexedAccess())
+            val  = self.visit(ctx.expr())
+            self._emit(IRStore(addr, 0, val))
+
+        return None
+
+    def visitForUpdate(self, ctx):
+        if ctx.assignmentNoSemi():
+            return self.visit(ctx.assignmentNoSemi())
+
+        name   = ctx.ID().getText()
+        symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
+        current = self._new_temp()
+        self._emit_load(current, symbol)
+        result = self._new_temp()
+        if ctx.incrementOp().getText() == "++":
+            self._emit(IRBinOp(result, current, BinOp.ADD, "1"))
+        else:
+            self._emit(IRBinOp(result, current, BinOp.SUB, "1"))
+        self._emit_store(result, symbol)
+        return None
+
+    def visitIndexedAssignment(self, ctx):
+        addr = self._emit_indexed_address(ctx.indexedAccess())
+        val  = self.visit(ctx.expr())
+        self._emit(IRStore(addr, 0, val))
+        return None
+
+    # -----------------------------------------------------------------------
+    # Control de flujo
+    # -----------------------------------------------------------------------
+
+    def visitIfStmt(self, ctx):
+        else_label = self._new_label("IF_ELSE")
+        end_label  = self._new_label("IF_END")
+
+        cond = self.visit(ctx.expr())
+        self._emit(IRIfFalse(cond, else_label))
+        self.visit(ctx.block(0))
+
+        if ctx.SINON():
+            self._emit(IRGoto(end_label))
+            self._emit(IRLabel(else_label))
+            self.visit(ctx.block(1))
+            self._emit(IRLabel(end_label))
+        else:
+            self._emit(IRLabel(else_label))
+
+        return None
+
+    def visitWhileStmt(self, ctx):
+        start = self._new_label("WHILE_START")
+        end   = self._new_label("WHILE_END")
+
+        self.loop_stack.append({"continue": start, "break": end})
+        self._emit(IRLabel(start))
+
+        cond = self.visit(ctx.expr())
+        self._emit(IRIfFalse(cond, end))
+        self.visit(ctx.block())
+        self._emit(IRGoto(start))
+        self._emit(IRLabel(end))
+
+        self.loop_stack.pop()
+        return None
+
+    def visitForStmt(self, ctx):
+        start_lbl  = self._new_label("FOR_START")
+        update_lbl = self._new_label("FOR_UPDATE")
+        end_lbl    = self._new_label("FOR_END")
+
+        self.loop_stack.append({"continue": update_lbl, "break": end_lbl})
+
+        if ctx.forInit():
+            self.visit(ctx.forInit())
+
+        self._emit(IRLabel(start_lbl))
+
+        if ctx.expr():
+            cond = self.visit(ctx.expr())
+            self._emit(IRIfFalse(cond, end_lbl))
+
+        self.visit(ctx.block())
+
+        self._emit(IRLabel(update_lbl))
+        if ctx.forUpdate():
+            self.visit(ctx.forUpdate())
+
+        self._emit(IRGoto(start_lbl))
+        self._emit(IRLabel(end_lbl))
+
+        self.loop_stack.pop()
+        return None
+
+    def visitContinueStmt(self, ctx):
+        line = ctx.SUIVRE().getSymbol().line
+        if not self.loop_stack:
+            raise Exception(f"Error line {line}: 'suivre' usado fuera de loop")
+        self._emit(IRGoto(self.loop_stack[-1]["continue"]))
+        return None
+
+    def visitReturnStmt(self, ctx):
+        if ctx.expr():
+            temp = self.visit(ctx.expr())
+            self._emit(IRReturn(temp))
+        else:
+            self._emit(IRReturn())
+        return None
+
+    def visitExprStmt(self, ctx):
+        self.visit(ctx.expr())
+        return None
+
+    # -----------------------------------------------------------------------
+    # Expresiones — retornan el nombre del temporal con el resultado
+    # -----------------------------------------------------------------------
+
+    def visitExpr(self, ctx):
+        return self.visit(ctx.logicalOrExpr())
+
+    def visitLogicalOrExpr(self, ctx):
+        return self._binop_chain(ctx)
+
+    def visitLogicalAndExpr(self, ctx):
+        return self._binop_chain(ctx)
+
+    def visitBitwiseOrExpr(self, ctx):
+        return self._binop_chain(ctx)
+
+    def visitBitwiseXorExpr(self, ctx):
+        return self._binop_chain(ctx)
+
+    def visitEqualityExpr(self, ctx):
+        return self._binop_chain(ctx)
+
+    def visitRelationalExpr(self, ctx):
+        return self._binop_chain(ctx)
+
+    def visitShiftExpr(self, ctx):
+        return self._binop_chain(ctx)
+
+    def visitAdditiveExpr(self, ctx):
+        return self._binop_chain(ctx)
+
+    def visitMultiplicativeExpr(self, ctx):
+        return self._binop_chain(ctx)
+
+    def _binop_chain(self, ctx) -> str:
+        """
+        Maneja expresiones binarias encadenadas izquierda a derecha.
+        Ejemplo: a + b + c  →  _t0 = a + b;  _t1 = _t0 + c
+        """
+        result = self.visit(ctx.getChild(0))
+        i = 1
+        while i < ctx.getChildCount():
+            op_str = ctx.getChild(i).getText()
+            right  = self.visit(ctx.getChild(i + 1))
+
+            if op_str not in _OP_MAP:
+                raise Exception(f"Operador no soportado en IR: '{op_str}'")
+
+            temp = self._new_temp()
+            self._emit(IRBinOp(temp, result, _OP_MAP[op_str], right))
+            result = temp
+            i += 2
+        return result
+
+    def visitUnaryExpr(self, ctx):
+        if ctx.primaryExpr():
+            return self.visit(ctx.primaryExpr())
+
+        operand = self.visit(ctx.unaryExpr())
+        text    = ctx.getText()
+        temp    = self._new_temp()
+
+        if text.startswith("!"):
+            self._emit(IRUnOp(temp, UnOp.NOT, operand))
+            return temp
+        if text.startswith("-"):
+            self._emit(IRUnOp(temp, UnOp.NEG, operand))
+            return temp
+
+        return operand
+
+    def visitPrimaryExpr(self, ctx):
+        # Literal entero decimal
+        if ctx.INT_LITERAL():
+            return ctx.INT_LITERAL().getText()
+
+        # Literal hex
+        if ctx.HEX_LITERAL():
+            return ctx.HEX_LITERAL().getText()
+
+        # Literal booleano: vrai=1, faux=0
+        if ctx.BOOL_LITERAL():
+            return "1" if ctx.BOOL_LITERAL().getText() == "vrai" else "0"
+
+        if ctx.STRING_LITERAL():
+            raise Exception("String literals no soportados en generación de IR")
+
+        if ctx.functionCall():
+            return self.visit(ctx.functionCall())
+
+        if ctx.indexedAccess():
+            return self.visit(ctx.indexedAccess())
+
+        if ctx.ID():
+            name   = ctx.ID().getText()
+            symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
+
+            if symbol["kind"] == "array":
+                # Retorna la dirección base del array como temporal
+                temp = self._new_temp()
+                base = name if self._is_local(symbol) else f"@{name}"
+                self._emit(IRCopy(temp, base))
+                return temp
+
+            # Variable escalar: carga en temporal
+            temp = self._new_temp()
+            self._emit_load(temp, symbol)
+            return temp
+
+        if ctx.expr():
+            return self.visit(ctx.expr())
+
+        raise Exception(f"Expresión primaria no soportada: '{ctx.getText()}'")
+
+    def visitFunctionCall(self, ctx):
+        func_name = ctx.ID().getText()
+        args      = ctx.args().expr() if ctx.args() else []
+
+        # Evaluar todos los argumentos primero
+        arg_temps = [self.visit(arg) for arg in args]
+
+        # Emitir un IRParam por cada argumento
+        for arg_temp in arg_temps:
+            self._emit(IRParam(arg_temp))
+
+        # Emitir el IRCall y capturar el resultado
+        result = self._new_temp()
+        self._emit(IRCall(result, func_name, len(arg_temps)))
+        return result
+
+    def visitIndexedAccess(self, ctx):
+        addr   = self._emit_indexed_address(ctx)
+        result = self._new_temp()
+        self._emit(IRLoad(result, addr, 0))
+        return result
+
+    def _emit_indexed_address(self, ctx) -> str:
+        """
+        Calcula la dirección de un acceso indexado arr@(i) y retorna
+        el nombre del temporal que contiene esa dirección.
+
+        Fórmula: addr = base + index * WORD_SIZE
+        """
+        name   = ctx.ID().getText()
+        symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
+
+        # Dirección base
+        addr = self._new_temp()
+        if symbol["kind"] == "array":
+            base = name if self._is_local(symbol) else f"@{name}"
+            self._emit(IRCopy(addr, base))
+        else:
+            # Puntero: cargar su valor (que es la dirección)
+            self._emit_load(addr, symbol)
+
+        # Sumar cada dimension de indice
+        for expr_ctx in ctx.expr():
+            idx    = self.visit(expr_ctx)
+            scaled = self._new_temp()
+            self._emit(IRBinOp(scaled, idx, BinOp.MUL, str(WORD_SIZE)))
+            new_addr = self._new_temp()
+            self._emit(IRBinOp(new_addr, addr, BinOp.ADD, scaled))
+            addr = new_addr
+
+        return addr
