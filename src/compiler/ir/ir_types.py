@@ -82,6 +82,21 @@ class IRInstruction:
         """
         pass
 
+    def rename_uses(self, old: str, new: str) -> None:
+        """
+        Reemplaza 'old' por 'new' SOLO en las posiciones de uso (lectura).
+        Nunca toca el destino (def). Usado por el renamer para evitar
+        pisar el def cuando use y def comparten el mismo nombre (e.g. a = a + 1).
+        """
+        pass
+
+    def rename_def(self, old: str, new: str) -> None:
+        """
+        Reemplaza 'old' por 'new' SOLO en la posicion de definicion (dest).
+        Nunca toca los operandos de lectura.
+        """
+        pass
+
 
 # ---------------------------------------------------------------------------
 # Instrucciones concretas
@@ -111,6 +126,13 @@ class IRBinOp(IRInstruction):
         if self.left  == old: self.left  = new
         if self.right == old: self.right = new
 
+    def rename_uses(self, old: str, new: str) -> None:
+        if self.left  == old: self.left  = new
+        if self.right == old: self.right = new
+
+    def rename_def(self, old: str, new: str) -> None:
+        if self.dest == old: self.dest = new
+
     def __str__(self) -> str:
         return f"{self.dest} = {self.left} {self.op.value} {self.right}"
 
@@ -136,6 +158,12 @@ class IRUnOp(IRInstruction):
     def rename(self, old: str, new: str) -> None:
         if self.dest    == old: self.dest    = new
         if self.operand == old: self.operand = new
+
+    def rename_uses(self, old: str, new: str) -> None:
+        if self.operand == old: self.operand = new
+
+    def rename_def(self, old: str, new: str) -> None:
+        if self.dest == old: self.dest = new
 
     def __str__(self) -> str:
         return f"{self.dest} = {self.op.value}{self.operand}"
@@ -164,6 +192,12 @@ class IRCopy(IRInstruction):
         if self.dest == old: self.dest = new
         if self.src  == old: self.src  = new
 
+    def rename_uses(self, old: str, new: str) -> None:
+        if self.src == old: self.src = new
+
+    def rename_def(self, old: str, new: str) -> None:
+        if self.dest == old: self.dest = new
+
     def __str__(self) -> str:
         return f"{self.dest} = {self.src}"
 
@@ -190,6 +224,12 @@ class IRLoad(IRInstruction):
     def rename(self, old: str, new: str) -> None:
         if self.dest == old: self.dest = new
         if self.base == old: self.base = new
+
+    def rename_uses(self, old: str, new: str) -> None:
+        if self.base == old: self.base = new
+
+    def rename_def(self, old: str, new: str) -> None:
+        if self.dest == old: self.dest = new
 
     def __str__(self) -> str:
         return f"{self.dest} = mem[{self.base} + {self.offset}]"
@@ -220,6 +260,13 @@ class IRStore(IRInstruction):
     def rename(self, old: str, new: str) -> None:
         if self.base == old: self.base = new
         if self.src  == old: self.src  = new
+
+    def rename_uses(self, old: str, new: str) -> None:
+        if self.base == old: self.base = new
+        if self.src  == old: self.src  = new
+
+    def rename_def(self, old: str, new: str) -> None:
+        pass  # IRStore no tiene destino
 
     def __str__(self) -> str:
         return f"mem[{self.base} + {self.offset}] = {self.src}"
@@ -275,6 +322,12 @@ class IRIfTrue(IRInstruction):
     def rename(self, old: str, new: str) -> None:
         if self.cond == old: self.cond = new
 
+    def rename_uses(self, old: str, new: str) -> None:
+        if self.cond == old: self.cond = new
+
+    def rename_def(self, old: str, new: str) -> None:
+        pass
+
     def __str__(self) -> str:
         return f"if {self.cond} goto {self.target}"
 
@@ -296,6 +349,12 @@ class IRIfFalse(IRInstruction):
 
     def rename(self, old: str, new: str) -> None:
         if self.cond == old: self.cond = new
+
+    def rename_uses(self, old: str, new: str) -> None:
+        if self.cond == old: self.cond = new
+
+    def rename_def(self, old: str, new: str) -> None:
+        pass
 
     def __str__(self) -> str:
         return f"iffalse {self.cond} goto {self.target}"
@@ -320,6 +379,12 @@ class IRParam(IRInstruction):
 
     def rename(self, old: str, new: str) -> None:
         if self.value == old: self.value = new
+
+    def rename_uses(self, old: str, new: str) -> None:
+        if self.value == old: self.value = new
+
+    def rename_def(self, old: str, new: str) -> None:
+        pass
 
     def __str__(self) -> str:
         return f"param {self.value}"
@@ -351,6 +416,12 @@ class IRCall(IRInstruction):
     def rename(self, old: str, new: str) -> None:
         if self.dest == old: self.dest = new
 
+    def rename_uses(self, old: str, new: str) -> None:
+        pass  # IRCall no lee variables directamente (los args van en IRParam)
+
+    def rename_def(self, old: str, new: str) -> None:
+        if self.dest == old: self.dest = new
+
     def __str__(self) -> str:
         if self.dest:
             return f"{self.dest} = call {self.func}, {self.arg_count}"
@@ -379,6 +450,12 @@ class IRReturn(IRInstruction):
 
     def rename(self, old: str, new: str) -> None:
         if self.value == old: self.value = new
+
+    def rename_uses(self, old: str, new: str) -> None:
+        if self.value == old: self.value = new
+
+    def rename_def(self, old: str, new: str) -> None:
+        pass  # IRReturn no define variables
 
     def __str__(self) -> str:
         return f"return {self.value}" if self.value else "return"
