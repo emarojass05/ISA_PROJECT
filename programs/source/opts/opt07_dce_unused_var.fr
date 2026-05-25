@@ -1,0 +1,13 @@
+$ opt07_dce_unused_var.fr
+$ DCE: variable "muerta" calculada pero nunca usada.
+$ El compilador con --O1 debe eliminar el calculo de "muerto".
+$ Resultado esperado: 7
+fonc [int] dce_demo() {
+    [int] util = 3 + 4;
+    [int] muerto = util * 100;
+    ret util;
+}
+
+fonc [int] main() {
+    ret dce_demo();
+}

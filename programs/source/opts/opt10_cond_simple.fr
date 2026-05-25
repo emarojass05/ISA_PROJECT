@@ -1,0 +1,17 @@
+$ opt10_cond_simple.fr
+$ Condicional simple: scheduler reordena instrucciones independientes
+$ dentro de cada rama del si/sino.
+$ Resultado esperado: max(8, 3) = 8
+fonc [int] maximo([int] a, [int] b) {
+    [int] res = 0;
+    si (a > b) {
+        res = a;
+    } sinon {
+        res = b;
+    }
+    ret res;
+}
+
+fonc [int] main() {
+    ret maximo(8, 3);
+}

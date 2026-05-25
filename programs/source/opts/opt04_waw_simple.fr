@@ -1,0 +1,15 @@
+$ opt04_waw_simple.fr
+$ WAW simple: la variable "x" se escribe dos veces sin uso intermedio.
+$ El renamer debe crear _rn0_x para la segunda escritura,
+$ permitiendo al scheduler reordenar.
+$ Resultado esperado: 30
+fonc [int] waw_demo() {
+    [int] x = 10;
+    [int] y = 20;
+    x = 30;
+    ret x + y - y;
+}
+
+fonc [int] main() {
+    ret waw_demo();
+}
