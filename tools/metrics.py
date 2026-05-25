@@ -1,23 +1,3 @@
-"""
-metrics.py - Generador de metricas CSV para el pipeline de optimizacion.
-
-Uso (desde la raiz del proyecto, con el venv activado):
-    python3 tools/metrics.py [--out build/metrics.csv] [--python python3]
-
-Estrategia
-----------
-Llama al compilador via subprocess para cada combinacion (programa x nivel),
-parsea la seccion "OPTIMIZER" del stdout y construye el CSV.
-No importa nada del compilador directamente, por lo que funciona con
-cualquier Python que tenga el proyecto en el PYTHONPATH.
-
-Columnas del CSV
-----------------
-program, level, instrs_before, instrs_after, instrs_saved,
-rename_vars, dce_removed, unroll_loops, unroll_added,
-sched_moved, sched_blocks, elapsed_ms, code_bytes
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -50,18 +30,9 @@ CSV_FIELDS = [
 
 
 # ---------------------------------------------------------------------------
-# Parser del bloque OPTIMIZER en la salida del compilador
-# ---------------------------------------------------------------------------
 
 def _parse_optimizer_block(text: str) -> dict:
-    """
-    Extrae las metricas del bloque:
-        ========== OPTIMIZER (Ox) ==========
-        Optimization level : O1
-        Instructions before: 45
-        ...
-    Retorna un dict con las claves del CSV (sin program/level).
-    """
+    """Parse the OPTIMIZER block from compiler stdout into a metrics dict."""
     def _int(pattern: str, default: int = 0) -> int:
         m = re.search(pattern, text)
         return int(m.group(1)) if m else default
@@ -85,22 +56,16 @@ def _parse_optimizer_block(text: str) -> dict:
 
 
 def _add_code_bytes(row: dict) -> dict:
-    """Agrega code_bytes = instrs_after * 4 (cada instruccion ocupa 4 bytes)."""
+    """Append code_bytes = instrs_after * 4 to a metrics row."""
     after = row.get("instrs_after", 0)
     row["code_bytes"] = after * 4 if isinstance(after, int) else "ERROR"
     return row
 
 
 # ---------------------------------------------------------------------------
-# Ejecucion del compilador para un programa y nivel
-# ---------------------------------------------------------------------------
 
 def _get_instrs_before(python_cmd: str, source: Path) -> int | str:
-    """
-    Obtiene el numero de instrucciones IR antes de cualquier optimizacion.
-    Lo hace corriendo --O1 y leyendo 'Instructions before' del bloque OPTIMIZER.
-    Esto garantiza que el baseline de O0 usa el mismo contador que O1/O2.
-    """
+    """Get IR instruction count before any optimization by running --O1."""
     cmd = [python_cmd, "-m", "src.compiler.main", str(source), "--O1"]
     result = subprocess.run(
         cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT)
@@ -113,15 +78,9 @@ def _get_instrs_before(python_cmd: str, source: Path) -> int | str:
 
 
 def _run_level(python_cmd: str, source: Path, flag: str | None) -> dict | str:
-    """
-    Llama a python3 -m src.compiler.main <source> [--O1|--O2]
-    y retorna el dict de metricas, o un mensaje de error.
-
-    Para O0 el baseline se obtiene del 'instrs_before' reportado por --O1,
-    que usa el mismo contador interno que O1/O2 (len(func.body)).
-    """
+    """Compile source at the given optimization level; return metrics dict or error string."""
     if flag is None:
-        # O0: sin optimizacion -> instrs_before == instrs_after, demas metricas = 0
+        # O0: no optimization; instrs_before == instrs_after, all other metrics zero
         n_or_err = _get_instrs_before(python_cmd, source)
         if isinstance(n_or_err, str):
             return n_or_err
@@ -148,27 +107,25 @@ def _run_level(python_cmd: str, source: Path, flag: str | None) -> dict | str:
         if "OPTIMIZER" not in output:
             err = (result.stdout + result.stderr).strip()[:300]
             return f"no OPTIMIZER block in output: {err}"
-        # Extraer solo la seccion OPTIMIZER
+        # Extract only the OPTIMIZER section
         start = output.find("========== OPTIMIZER")
         opt_block = output[start:]
         return _parse_optimizer_block(opt_block)
 
 
 # ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Genera metricas CSV del pipeline de optimizacion."
+        description="Generate CSV metrics for the optimization pipeline."
     )
     ap.add_argument(
         "--out", default=str(DEFAULT_OUT),
-        help="Ruta del CSV de salida (default: build/metrics.csv)"
+        help="Output CSV path (default: build/metrics.csv)"
     )
     ap.add_argument(
         "--python", default="python3",
-        help="Interprete Python a usar (default: python3)"
+        help="Python interpreter to use (default: python3)"
     )
     args = ap.parse_args()
 
@@ -177,7 +134,7 @@ def main() -> None:
 
     programs = sorted(OPTS_DIR.glob("*.fr"))
     if not programs:
-        print(f"[WARN] No se encontraron .fr en {OPTS_DIR}", file=sys.stderr)
+        print(f"[WARN] No .fr files found in {OPTS_DIR}", file=sys.stderr)
         sys.exit(1)
 
     levels = [
@@ -216,17 +173,16 @@ def main() -> None:
                     f"saved={result['instrs_saved']:3d}"
                 )
 
-    # Escribir CSV
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"\nCSV guardado en : {out_path}")
-    print(f"Programas        : {len(programs)}")
-    print(f"Filas generadas  : {len(rows)}")
+    print(f"\nCSV saved to     : {out_path}")
+    print(f"Programs         : {len(programs)}")
+    print(f"Rows generated   : {len(rows)}")
     if errors:
-        print(f"Errores          : {errors}", file=sys.stderr)
+        print(f"Errors           : {errors}", file=sys.stderr)
         sys.exit(1)
 
 

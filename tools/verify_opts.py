@@ -1,28 +1,4 @@
 #!/usr/bin/env python3
-"""
-verify_opts.py - Verificacion end-to-end del pipeline compilador + CPU.
-
-Para cada programa opt*.fr:
-  1. Compila con O0 / O1 / O2 → .hex  (via src.compiler.main)
-  2. Corre la simulacion del CPU       (via `make sv-cpu-exec`)
-  3. Lee x3 (a0) de build/sim/register_dump.txt
-  4. Compara contra el resultado esperado declarado en este script
-
-Uso:
-    python3 tools/verify_opts.py              # todos los programas, todos los niveles
-    python3 tools/verify_opts.py opt01        # solo opt01, todos los niveles
-    python3 tools/verify_opts.py opt07 --O1  # opt07 solo con O1
-
-Requisitos:
-    - iverilog y vvp en el PATH
-    - .venv/bin/python3.12 con antlr4 instalado
-    - Makefile en la raiz del proyecto con el target sv-cpu-exec
-
-Salida:
-    Tabla pass/fail en terminal.
-    Codigo de salida 0 si todo pasa, 1 si hay fallos.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -34,8 +10,6 @@ import time
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Configuracion
-# ---------------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OPTS_DIR     = PROJECT_ROOT / "programs" / "source" / "opts"
@@ -44,39 +18,37 @@ SIM_DIR      = PROJECT_ROOT / "build" / "sim"
 REG_DUMP     = SIM_DIR / "register_dump.txt"
 VENV_PY      = PROJECT_ROOT / ".venv" / "bin" / "python3.12"
 
-# Registro de retorno de main() segun la ISA:
-#   a0 = x3 (indice 3 en el register file)
+# Return register: a0 = x3 (index 3 in the register file)
 RETURN_REG = 3
 
-# MAX_CYCLES por defecto para la simulacion.
-# Programas con loops sin desenrollar pueden necesitar mas ciclos.
+# Default simulation cycle limit
 DEFAULT_MAX_CYCLES = 2000
 
 # ---------------------------------------------------------------------------
-# Resultados esperados por programa
-#   Clave  : nombre del archivo .fr (sin extension)
-#   Valor  : resultado esperado en a0 al terminar main()
+# Expected return values by program
+#   Key   : .fr filename without extension
+#   Value : expected a0 value when main() returns
 # ---------------------------------------------------------------------------
 
 EXPECTED: dict[str, int] = {
     # Loop unrolling
     "opt01_unroll_sum":     10,   # 1+2+3+4 = 10
     "opt02_unroll_product": 24,   # 1*2*3*4 = 24
-    "opt03_unroll_nested":  18,   # 6*3 = 18  (loop interno desenrollado)
+    "opt03_unroll_nested":  18,   # 6*3 = 18 (inner loop unrolled)
 
-    # Renombramiento WAW/WAR
+    # WAW/WAR renaming
     "opt04_waw_simple":     30,   # x = 30; ret x + y - y
     "opt05_war_simple":     15,   # b = a + 5 = 15; ret b
-    "opt06_waw_war_mixed":  42,   # resultado final = 42
+    "opt06_waw_war_mixed":  42,   # final result = 42
 
     # Dead Code Elimination
-    "opt07_dce_unused_var": 7,    # util = 3+4 = 7; muerto eliminado
-    "opt08_dce_chain":      5,    # resultado = 5; cadena a,b,c eliminada
-    "opt09_dce_with_call":  1,    # ret 1; llamada a efecto() ocurre
+    "opt07_dce_unused_var": 7,    # useful = 3+4 = 7; dead var eliminated
+    "opt08_dce_chain":      5,    # result = 5; chain a,b,c eliminated
+    "opt09_dce_with_call":  1,    # ret 1; side-effect call still executes
 
-    # Reordenamiento (condicionales)
+    # Scheduling (conditionals)
     "opt10_cond_simple":    8,    # max(8, 3) = 8
-    "opt11_cond_nested":    1,    # clasifica(75) -> aprobado -> ret 1
+    "opt11_cond_nested":    1,    # clasifica(75) -> passed -> ret 1
     "opt12_func_chain":     10,   # f3(2) = 10
 }
 
@@ -87,21 +59,16 @@ LEVELS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _py() -> str:
-    """Devuelve el interprete Python a usar."""
+    """Return the Python interpreter to use."""
     if VENV_PY.exists():
         return str(VENV_PY)
     return sys.executable
 
 
 def compile_fr(source: Path, flag: str | None, out_hex: Path) -> tuple[bool, str]:
-    """
-    Compila source.fr con el flag dado y escribe out_hex.
-    Retorna (ok, mensaje_de_error).
-    """
+    """Compile source.fr with the given flag; write out_hex. Returns (ok, error)."""
     cmd = [_py(), "-m", "src.compiler.main", str(source)]
     if flag:
         cmd.append(flag)
@@ -120,10 +87,7 @@ def compile_fr(source: Path, flag: str | None, out_hex: Path) -> tuple[bool, str
 
 
 def run_simulation(hex_path: Path, max_cycles: int = DEFAULT_MAX_CYCLES) -> tuple[bool, str]:
-    """
-    Ejecuta `make sv-cpu-exec PROGRAM=<hex_path> MAX_CYCLES=<n>`.
-    Retorna (ok, stderr_snippet).
-    """
+    """Run 'make sv-cpu-exec PROGRAM=<hex_path> MAX_CYCLES=<n>'. Returns (ok, stderr)."""
     SIM_DIR.mkdir(parents=True, exist_ok=True)
     cmd = [
         "make", "sv-cpu-exec",
@@ -145,10 +109,7 @@ def run_simulation(hex_path: Path, max_cycles: int = DEFAULT_MAX_CYCLES) -> tupl
 
 
 def read_return_value() -> int | None:
-    """
-    Lee build/sim/register_dump.txt y extrae el valor de x<RETURN_REG>.
-    Retorna el entero (con signo, 32 bits) o None si no lo encuentra.
-    """
+    """Read x<RETURN_REG> from register_dump.txt; returns signed 32-bit int or None."""
     if not REG_DUMP.exists():
         return None
     text = REG_DUMP.read_text(encoding="utf-8")
@@ -156,7 +117,7 @@ def read_return_value() -> int | None:
     if not m:
         return None
     raw = int(m.group(1), 16)
-    # Interpretar como entero con signo de 32 bits
+    # Interpret as signed 32-bit integer
     if raw >= 0x8000_0000:
         raw -= 0x1_0000_0000
     return raw
@@ -167,8 +128,6 @@ def _bar(pct: float, width: int = 12) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
-# ---------------------------------------------------------------------------
-# Runner principal
 # ---------------------------------------------------------------------------
 
 def run_verification(
@@ -186,7 +145,7 @@ def run_verification(
     for prog_name in programs:
         source = OPTS_DIR / f"{prog_name}.fr"
         if not source.exists():
-            print(f"[WARN] No encontrado: {source}")
+            print(f"[WARN] Not found: {source}")
             continue
 
         expected = EXPECTED.get(prog_name)
@@ -198,7 +157,7 @@ def run_verification(
 
             t0 = time.perf_counter()
 
-            # --- 1. Compilar ---
+            # --- 1. Compile ---
             out_hex = BIN_DIR / f"{prog_name}_{level_name}.hex"
             ok_compile, err_compile = compile_fr(source, flag, out_hex)
             if not ok_compile:
@@ -207,7 +166,7 @@ def run_verification(
                 results.append((prog_name, level_name, "COMPILE_ERR", None, expected, False, err_compile[:120]))
                 continue
 
-            # --- 2. Simular ---
+            # --- 2. Simulate ---
             ok_sim, err_sim = run_simulation(out_hex)
             if not ok_sim:
                 elapsed = round((time.perf_counter() - t0) * 1000)
@@ -215,17 +174,17 @@ def run_verification(
                 results.append((prog_name, level_name, "SIM_ERR", None, expected, False, err_sim[:120]))
                 continue
 
-            # --- 3. Leer resultado ---
+            # --- 3. Read result ---
             got = read_return_value()
             elapsed = round((time.perf_counter() - t0) * 1000)
 
             if got is None:
                 print(f"NO RESULT ({elapsed}ms)")
-                results.append((prog_name, level_name, "NO_RESULT", None, expected, False, "x3 no encontrado en register_dump"))
+                results.append((prog_name, level_name, "NO_RESULT", None, expected, False, "x3 not found in register_dump"))
                 continue
 
             if expected is None:
-                print(f"a0={got}  (sin expected)  {elapsed}ms")
+                print(f"a0={got}  (no expected)  {elapsed}ms")
                 results.append((prog_name, level_name, "NO_EXPECTED", got, None, True, ""))
                 continue
 
@@ -235,7 +194,7 @@ def run_verification(
             results.append((prog_name, level_name, "OK" if ok else "FAIL", got, expected, ok, ""))
 
     # ---------------------------------------------------------------------------
-    # Resumen
+    # Summary
     # ---------------------------------------------------------------------------
     passed = sum(1 for *_, ok, _ in results if ok)
     total_r = len(results)
@@ -244,11 +203,10 @@ def run_verification(
     w = 70
     print()
     print("=" * w)
-    print(f"  RESULTADOS  {passed}/{total_r} pasaron  ({errors} fallos)")
+    print(f"  RESULTS  {passed}/{total_r} passed  ({errors} failures)")
     print("=" * w)
 
-    # Encabezado de tabla
-    print(f"  {'Programa':<32}  {'Niv':<3}  {'Estado':<12}  {'got':>8}  {'exp':>8}")
+    print(f"  {'Program':<32}  {'Lvl':<3}  {'Status':<12}  {'got':>8}  {'exp':>8}")
     print(f"  {'-'*32}  {'-'*3}  {'-'*12}  {'-'*8}  {'-'*8}")
 
     for (prog_name, level_name, status, got, exp, ok, note) in results:
@@ -261,36 +219,32 @@ def run_verification(
 
     print()
 
-    # Barra de progreso visual
     pct = passed / total_r if total_r else 0
-    print(f"  [{_bar(pct)}]  {round(pct*100)}% exitoso")
+    print(f"  [{_bar(pct)}]  {round(pct*100)}% passed")
     print()
 
     return errors == 0
 
 
 # ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Verificacion end-to-end: compilador + simulador CPU."
+        description="End-to-end verification: compiler + CPU simulator."
     )
     ap.add_argument(
         "filter", nargs="?", default=None,
-        help="Filtro de nombre de programa (ej: opt01, dce, unroll)"
+        help="Program name filter (e.g. opt01, dce, unroll)"
     )
-    ap.add_argument("--O0", action="store_true", help="Solo nivel O0")
-    ap.add_argument("--O1", action="store_true", help="Solo nivel O1")
-    ap.add_argument("--O2", action="store_true", help="Solo nivel O2")
+    ap.add_argument("--O0", action="store_true", help="Run O0 level only")
+    ap.add_argument("--O1", action="store_true", help="Run O1 level only")
+    ap.add_argument("--O2", action="store_true", help="Run O2 level only")
     ap.add_argument(
         "--max-cycles", type=int, default=DEFAULT_MAX_CYCLES,
-        help=f"Ciclos maximos de simulacion (default: {DEFAULT_MAX_CYCLES})"
+        help=f"Maximum simulation cycles (default: {DEFAULT_MAX_CYCLES})"
     )
     args = ap.parse_args()
 
-    # Niveles a correr
     selected_levels = []
     if args.O0: selected_levels.append(("O0", None))
     if args.O1: selected_levels.append(("O1", "--O1"))
@@ -298,28 +252,26 @@ def main() -> None:
     if not selected_levels:
         selected_levels = list(LEVELS)
 
-    # Programas a correr
     all_programs = sorted(EXPECTED.keys())
     if args.filter:
         all_programs = [p for p in all_programs if args.filter in p]
         if not all_programs:
-            print(f"[WARN] Ningun programa coincide con el filtro '{args.filter}'")
+            print(f"[WARN] No programs match filter '{args.filter}'")
             sys.exit(1)
 
-    # Verificar que iverilog este disponible
     check = subprocess.run(["which", "iverilog"], capture_output=True)
     if check.returncode != 0:
-        print("[ERR] iverilog no encontrado en PATH.")
-        print("      Instala iverilog (ej: sudo apt install iverilog)")
-        print("      o ejecuta este script desde el entorno donde este disponible.")
+        print("[ERR] iverilog not found in PATH.")
+        print("      Install iverilog (e.g. sudo apt install iverilog)")
+        print("      or run this script from an environment where it is available.")
         sys.exit(2)
 
     print()
     print("=" * 70)
-    print("  verify_opts.py — verificacion end-to-end")
-    print(f"  Programas : {len(all_programs)}")
-    print(f"  Niveles   : {[l for l,_ in selected_levels]}")
-    print(f"  Max ciclos: {args.max_cycles}")
+    print("  verify_opts.py — end-to-end verification")
+    print(f"  Programs  : {len(all_programs)}")
+    print(f"  Levels    : {[l for l,_ in selected_levels]}")
+    print(f"  Max cycles: {args.max_cycles}")
     print("=" * 70)
     print()
 

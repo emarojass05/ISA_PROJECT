@@ -459,8 +459,8 @@ def main():
         if args.verbose:
             print("[INFO] Phase 4: Assembly code generation...")
 
-        # Cuando la IR fue optimizada usamos el IRCodeGenerator como backend.
-        # Sin optimizacion (O0) seguimos con el AsmGenerator basado en AST.
+        # Use IRCodeGenerator when IR was optimized.
+        # Fall back to AST-based AsmGenerator for O0.
         if ir_program is not None and (args.O1 or args.O2):
             if args.verbose:
                 print("[INFO] Phase 4 (IR path): IR -> ASM via IRCodeGenerator...")
