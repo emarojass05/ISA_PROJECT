@@ -1,0 +1,15 @@
+$ opt05_war_simple.fr
+$ WAR: "a" se lee, luego se reescribe con valor independiente.
+$ Renamer crea _rn0_a = nuevo_valor, permitiendo reordenar la
+$ escritura respecto a la lectura.
+$ Resultado esperado: b=15, a_nuevo=99, ret b = 15
+fonc [int] war_demo() {
+    [int] a = 5;
+    [int] b = a + 10;
+    a = 99;
+    ret b;
+}
+
+fonc [int] main() {
+    ret war_demo();
+}

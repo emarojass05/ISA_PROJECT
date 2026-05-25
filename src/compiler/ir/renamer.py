@@ -1,5 +1,5 @@
 """
-renamer.py — Renombramiento estatico de registros para eliminar
+renamer.py - Renombramiento estatico de registros para eliminar
 dependencias falsas WAR y WAW dentro de bloques basicos.
 
 Problema que resuelve
@@ -11,8 +11,8 @@ libremente esas escrituras porque teme corromper el valor. Sin embargo,
 muchas de esas dependencias son FALSAS: no hay un flujo de datos real
 entre las dos escrituras, solo comparten nombre.
 
-    WAW (Write After Write):  a = 1 ; a = 2  → la segunda 'a' es distinta
-    WAR (Write After Read):   b = a + 1 ; a = 5  → la 'a' escrita es distinta
+    WAW (Write After Write):  a = 1 ; a = 2  -> la segunda "a" es distinta
+    WAR (Write After Read):   b = a + 1 ; a = 5  -> la "a" escrita es distinta
 
 Solucion
 --------
@@ -22,17 +22,22 @@ propagar ese nombre nuevo a todos los usos posteriores en el mismo bloque.
     Antes:              Despues:
       a = 1               a = 1
       b = a + 1           b = a + 1
-      a = 5               _rn0_a = 5        ← WAR eliminado
-      c = a + 2           c = _rn0_a + 2    ← usa el nombre nuevo
+      a = 5               _rn0_a = 5        <- WAR eliminado
+      c = a + 2           c = _rn0_a + 2    <- usa el nombre nuevo
 
-Ahora el scheduler puede reubicar '_rn0_a = 5' sin riesgo porque es una
-variable independiente de 'a'.
+Ahora el scheduler puede reubicar "_rn0_a = 5" sin riesgo porque es una
+variable independiente de "a".
 
 Alcance
 -------
 El renombramiento es INTRA-BLOQUE: solo opera dentro de cada BasicBlock.
 No cruza aristas del CFG. Esto es suficiente para el reordenamiento local
 que implementa el scheduler.
+
+IMPORTANTE: solo se detecta WAR cuando la lectura previa de la variable
+provino de una escritura DENTRO DEL MISMO BLOQUE. Las lecturas de variables
+live-in (que vienen de bloques anteriores, incluyendo aristas de retorno en
+loops) no generan WAR falso, para no romper la propagacion entre bloques.
 
 Interfaz publica
 ----------------
@@ -72,7 +77,7 @@ class RenamerState:
     def fresh(self, original: str) -> str:
         """
         Genera un nombre fresco a partir del nombre original.
-        Ejemplo: 'a' → '_rn0_a',  '_t3' → '_rn1_t3'
+        Ejemplo: "a" -> "_rn0_a",  "_t3" -> "_rn1_t3"
         """
         base = original.lstrip("_")   # quita underscores iniciales
         name = f"_rn{self.counter}_{base}"
@@ -94,37 +99,45 @@ def rename_block(block: BasicBlock, state: RenamerState) -> None:
       Para cada instruccion en orden:
         1. Capturar uses y defs ORIGINALES (antes de cualquier cambio).
         2. Renombrar los USES con el mapa actual (rename_map).
-           Se usa rename_uses() para no tocar el destino.
         3. Para cada variable en defs:
-             - Si ya fue definida o usada antes en este bloque
-               → dependencia falsa → crear nombre fresco y renombrar solo el dest.
-             - Si no → primera definicion, registrarla en defined_here.
-        4. Actualizar used_before_def con las variables usadas que aun
-           no habian sido definidas (necesario para detectar WAR).
+             - Si ya fue definida antes en este bloque (WAW)
+               O si fue usada despues de una definicion en este bloque (WAR)
+               -> dependencia falsa -> crear nombre fresco y renombrar dest.
+             - Si no -> primera definicion, registrar en defined_here.
+        4. Registrar usos de variables ya definidas en el bloque,
+           para detectar WAR en instrucciones posteriores.
+
+    IMPORTANTE (WAR correcto):
+        Solo se agrega una variable al conjunto WAR si fue leida DESPUES
+        de ser definida en el mismo bloque. Las lecturas de variables
+        live-in (no definidas en el bloque) NO se cuentan como WAR.
+        Esto evita renombrar actualizaciones de loop (e.g. i = i + 1)
+        que rompen la propagacion entre bloques.
 
     Variables del estado local:
         rename_map      { var_original: var_actual }
         defined_here    vars con al menos una definicion en este bloque
-        used_before_def vars leidas antes de su primera escritura en el bloque
+        used_after_def  vars leidas DESPUES de ser definidas en el bloque
+                        (se usan para detectar WAR futuro)
     """
-    rename_map:      Dict[str, str] = {}
-    defined_here:    Set[str]       = set()
-    used_before_def: Set[str]       = set()
+    rename_map:    Dict[str, str] = {}
+    defined_here:  Set[str]       = set()
+    used_after_def: Set[str]      = set()
 
     for instr in block.instructions:
         # Capturar nombres originales ANTES de cualquier modificacion
         original_uses = frozenset(instr.uses())
         original_defs = frozenset(instr.defs())
 
-        # Paso 1 — renombrar usos con el mapa actual
+        # Paso 1 - renombrar usos con el mapa actual
         for var in original_uses:
             if var in rename_map:
                 instr.rename_uses(var, rename_map[var])
 
-        # Paso 2 — manejar definiciones
+        # Paso 2 - manejar definiciones
         for var in original_defs:
-            is_waw = var in defined_here       # ya fue escrita antes → WAW
-            is_war = var in used_before_def    # fue leida antes → WAR
+            is_waw = var in defined_here      # ya fue escrita antes -> WAW
+            is_war = var in used_after_def    # fue leida (post-def) antes -> WAR
 
             if is_waw or is_war:
                 new_name = state.fresh(var)
@@ -133,10 +146,12 @@ def rename_block(block: BasicBlock, state: RenamerState) -> None:
             else:
                 defined_here.add(var)
 
-        # Paso 3 — registrar usos para deteccion WAR futura
+        # Paso 3 - registrar usos para deteccion WAR futura.
+        # Solo aplica si la variable ya fue definida en este bloque:
+        # las lecturas de variables live-in no son dependencias falsas.
         for var in original_uses:
-            if var not in defined_here:
-                used_before_def.add(var)
+            if var in defined_here:
+                used_after_def.add(var)
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +180,7 @@ def rename_function(ir_func: IRFunction,
     Construye el CFG de la funcion, aplica renombramiento bloque a bloque
     y re-aplana el resultado de vuelta al body de la IRFunction.
 
-    Nota: modifica ir_func.body in-place.
+    Modifica ir_func.body in-place.
     """
     if state is None:
         state = RenamerState()

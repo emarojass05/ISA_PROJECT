@@ -1,0 +1,15 @@
+$ opt01_unroll_sum.fr
+$ Loop unrolling: suma de 1 a 4 con trip-count conocido.
+$ El unroller debe expandir completamente (factor 4).
+$ Resultado esperado: 1+2+3+4 = 10
+fonc [int] suma_cuatro() {
+    [int] acc = 0;
+    pour ([int] i = 1; i <= 4; i = i + 1) {
+        acc = acc + i;
+    }
+    ret acc;
+}
+
+fonc [int] main() {
+    ret suma_cuatro();
+}

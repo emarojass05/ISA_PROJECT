@@ -1,0 +1,20 @@
+$ opt03_unroll_nested.fr
+$ Loop unrolling: loop externo variable, loop interno con trip-count 4.
+$ El unroller despliega el loop interno (trip-count conocido),
+$ el externo queda como esta (n desconocido).
+$ Resultado: suma de (0+1+2+3) * n = 6 * 3 = 18 para n=3
+fonc [int] suma_fila([int] n) {
+    [int] total = 0;
+    pour ([int] i = 0; i < n; i = i + 1) {
+        [int] fila = 0;
+        pour ([int] j = 0; j < 4; j = j + 1) {
+            fila = fila + j;
+        }
+        total = total + fila;
+    }
+    ret total;
+}
+
+fonc [int] main() {
+    ret suma_fila(3);
+}

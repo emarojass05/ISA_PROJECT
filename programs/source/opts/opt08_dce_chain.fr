@@ -1,0 +1,16 @@
+$ opt08_dce_chain.fr
+$ DCE en cadena: una variable muerta que usa otras variables muertas.
+$ El compilador debe eliminar toda la cadena (a, b, c) y solo
+$ conservar "resultado".
+$ Resultado esperado: 5
+fonc [int] dce_chain() {
+    [int] resultado = 5;
+    [int] a = resultado * 2;
+    [int] b = a + 1;
+    [int] c = b * b;
+    ret resultado;
+}
+
+fonc [int] main() {
+    ret dce_chain();
+}

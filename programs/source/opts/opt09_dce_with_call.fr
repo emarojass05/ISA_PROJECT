@@ -1,0 +1,19 @@
+$ opt09_dce_with_call.fr
+$ DCE respeta side-effects: la llamada a "efecto" NO se elimina
+$ aunque su valor de retorno no se use. Las variables locales muertas
+$ si se eliminan.
+$ Resultado esperado: 1 (la llamada ocurre, el ret de main es 1)
+fonc [int] efecto() {
+    ret 42;
+}
+
+fonc [int] dce_call_demo() {
+    [int] vivo = 1;
+    [int] muerto = 999;
+    [int] retorno_ignorado = efecto();
+    ret vivo;
+}
+
+fonc [int] main() {
+    ret dce_call_demo();
+}

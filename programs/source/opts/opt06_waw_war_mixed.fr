@@ -1,0 +1,17 @@
+$ opt06_waw_war_mixed.fr
+$ Mezcla WAW + WAR en la misma funcion.
+$ "res" se reescribe (WAW) y "tmp" se lee antes de reescribir (WAR).
+$ Resultado esperado: 42
+fonc [int] mixed_demo() {
+    [int] res = 0;
+    [int] tmp = 7;
+    [int] guardado = tmp;
+    tmp = 99;
+    res = 10;
+    res = guardado * 6;
+    ret res;
+}
+
+fonc [int] main() {
+    ret mixed_demo();
+}

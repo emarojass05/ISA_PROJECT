@@ -1,0 +1,15 @@
+$ opt02_unroll_product.fr
+$ Loop unrolling: producto acumulado con trip-count 4.
+$ Demuestra que el unroller funciona con multiplicacion.
+$ Resultado esperado: 1*2*3*4 = 24
+fonc [int] factorial_cuatro() {
+    [int] prod = 1;
+    pour ([int] i = 1; i <= 4; i = i + 1) {
+        prod = prod * i;
+    }
+    ret prod;
+}
+
+fonc [int] main() {
+    ret factorial_cuatro();
+}
