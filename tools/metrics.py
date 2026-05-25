@@ -15,7 +15,7 @@ Columnas del CSV
 ----------------
 program, level, instrs_before, instrs_after, instrs_saved,
 rename_vars, dce_removed, unroll_loops, unroll_added,
-sched_moved, sched_blocks, elapsed_ms
+sched_moved, sched_blocks, elapsed_ms, code_bytes
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ CSV_FIELDS = [
     "instrs_before",
     "instrs_after",
     "instrs_saved",
+    "code_bytes",
     "rename_vars",
     "dce_removed",
     "unroll_loops",
@@ -81,6 +82,13 @@ def _parse_optimizer_block(text: str) -> dict:
         "sched_blocks":  _int(r"\[sched\]\s+blocks changed\s*:\s*(\d+)"),
         "elapsed_ms":    round(_float(r"Pipeline time\s*:\s*([\d.]+)\s*ms"), 3),
     }
+
+
+def _add_code_bytes(row: dict) -> dict:
+    """Agrega code_bytes = instrs_after * 4 (cada instruccion ocupa 4 bytes)."""
+    after = row.get("instrs_after", 0)
+    row["code_bytes"] = after * 4 if isinstance(after, int) else "ERROR"
+    return row
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +207,7 @@ def main() -> None:
                 })
             else:
                 row = {"program": prog.name, "level": level_name} | result
+                _add_code_bytes(row)
                 rows.append(row)
                 print(
                     f"OK  "

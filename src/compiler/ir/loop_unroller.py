@@ -316,24 +316,48 @@ def _try_get_trip_count(body: List[IRInstruction],
 def _clone_instrs(instrs: List[IRInstruction],
                   suffix: str) -> List[IRInstruction]:
     """
-    Clona una lista de instrucciones renombrando todos los temporales
-    (_tN, _rnN_x) definidos en esa lista para que tengan el sufijo dado.
+    Clona una lista de instrucciones renombrando:
+      - Temporales IR (_tN, _rnN_x) definidos en la lista.
+      - Etiquetas locales al cuerpo (IRLabel.name, y los targets de
+        IRGoto / IRIfTrue / IRIfFalse que apunten a esas etiquetas).
 
     Las variables del programa fuente (sin _ inicial: i, total, n, ...) NO
     se renombran: representan la misma variable compartida entre copias.
+    Las etiquetas que apuntan FUERA del cuerpo (p.ej. el exit del loop)
+    tampoco se tocan porque no estan en defined_labels.
     """
-    # Recolectar temporales definidos en estas instrucciones
-    defined_temps = set()
+    # Recolectar temporales y etiquetas locales definidos en estas instrucciones
+    defined_temps:  set = set()
+    defined_labels: set = set()
     for instr in instrs:
         for var in instr.defs():
             if var.startswith("_"):
                 defined_temps.add(var)
+        if isinstance(instr, IRLabel):
+            defined_labels.add(instr.name)
 
     cloned = []
     for instr in instrs:
         new_instr = copy.deepcopy(instr)
+
+        # Renombrar temporales IR
         for temp in defined_temps:
             new_instr.rename(temp, f"{temp}{suffix}")
+
+        # Renombrar etiquetas locales al cuerpo
+        if isinstance(new_instr, IRLabel):
+            if new_instr.name in defined_labels:
+                new_instr.name = f"{new_instr.name}{suffix}"
+        elif isinstance(new_instr, IRGoto):
+            if new_instr.target in defined_labels:
+                new_instr.target = f"{new_instr.target}{suffix}"
+        elif isinstance(new_instr, IRIfTrue):
+            if new_instr.target in defined_labels:
+                new_instr.target = f"{new_instr.target}{suffix}"
+        elif isinstance(new_instr, IRIfFalse):
+            if new_instr.target in defined_labels:
+                new_instr.target = f"{new_instr.target}{suffix}"
+
         cloned.append(new_instr)
     return cloned
 
@@ -490,9 +514,7 @@ def unroll_function(ir_func: IRFunction,
             # Partial unrolling
             f = factor if factor > 0 else _choose_factor(body_size)
             if f <= 1:
-                stats.loops_skipped += 1
-                continue
-
+                continue   # no hay unrolling util
             ir_func.body = _apply_partial_unroll(ir_func.body, loop, f)
             stats.loops_partial_unrolled += 1
             changed = True
@@ -503,19 +525,16 @@ def unroll_function(ir_func: IRFunction,
 
 
 def unroll_program(ir_program: IRProgram,
-                   factor: int = DEFAULT_FACTOR,
-                   max_full: int = DEFAULT_MAX_FULL_UNROLL) -> UnrollStats:
+                   factor: int = 0,
+                   max_full: int = 6) -> UnrollStats:
     """
     Aplica loop unrolling a todas las funciones del programa.
-    Retorna estadisticas acumuladas.
     """
     total = UnrollStats()
     for func in ir_program.functions:
         s = unroll_function(func, factor=factor, max_full=max_full)
-        total.loops_found            += s.loops_found
         total.loops_full_unrolled    += s.loops_full_unrolled
         total.loops_partial_unrolled += s.loops_partial_unrolled
-        total.loops_skipped          += s.loops_skipped
         total.instrs_before          += s.instrs_before
         total.instrs_after           += s.instrs_after
     return total

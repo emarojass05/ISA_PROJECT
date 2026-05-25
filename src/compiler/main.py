@@ -19,6 +19,7 @@ from src.compiler.backend.encoder import assemble
 from src.compiler.ir.ir_generator import IRGenerator
 from src.compiler.ir.cfg import CFG
 from src.compiler.ir.optimizer import optimize_program, OptimizationLevel
+from src.compiler.ir.ir_codegen import IRCodeGenerator
 
 
 class CompilerErrorListener(ErrorListener):
@@ -458,13 +459,25 @@ def main():
         if args.verbose:
             print("[INFO] Phase 4: Assembly code generation...")
 
-        asm_generator = AsmGenerator(
-            symbol_table=symbol_table,
-            label_table=label_table,
-            fixup_table=fixup_table
-        )
-        asm_generator.visit(tree)
-        asm_source = asm_generator.get_asm()
+        # Cuando la IR fue optimizada usamos el IRCodeGenerator como backend.
+        # Sin optimizacion (O0) seguimos con el AsmGenerator basado en AST.
+        if ir_program is not None and (args.O1 or args.O2):
+            if args.verbose:
+                print("[INFO] Phase 4 (IR path): IR -> ASM via IRCodeGenerator...")
+            ir_codegen = IRCodeGenerator(
+                symbol_table=symbol_table,
+                label_table=label_table,
+                fixup_table=fixup_table,
+            )
+            asm_source = ir_codegen.generate(ir_program)
+        else:
+            asm_generator = AsmGenerator(
+                symbol_table=symbol_table,
+                label_table=label_table,
+                fixup_table=fixup_table
+            )
+            asm_generator.visit(tree)
+            asm_source = asm_generator.get_asm()
 
         if args.verbose:
             print("[OK] Assembly generated")
