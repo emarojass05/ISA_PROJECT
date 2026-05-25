@@ -18,6 +18,7 @@ from src.compiler.backend.encoder import assemble
 
 from src.compiler.ir.ir_generator import IRGenerator
 from src.compiler.ir.cfg import CFG
+from src.compiler.ir.optimizer import optimize_program, OptimizationLevel
 
 
 class CompilerErrorListener(ErrorListener):
@@ -385,6 +386,16 @@ def main():
         help="Build and print the CFG (basic blocks) for each function"
     )
 
+    opt_group = parser.add_mutually_exclusive_group()
+    opt_group.add_argument(
+        "--O1", action="store_true", dest="O1",
+        help="Enable O1 optimizations: register renaming + dead code elimination"
+    )
+    opt_group.add_argument(
+        "--O2", action="store_true", dest="O2",
+        help="Enable O2 optimizations: O1 + loop unrolling + instruction scheduling"
+    )
+
     args = parser.parse_args()
     source_file = args.source
 
@@ -407,6 +418,8 @@ def main():
     label_table = LabelTable()
     fixup_table = FixupTable()
 
+    ir_program = None
+    opt_stats  = None
     try:
         semantic_builder = SemanticTableBuilder(symbol_table)
         semantic_builder.visit(tree)
@@ -415,8 +428,8 @@ def main():
             print("[OK] Symbol table built")
 
         # ── IR generation (optional, does not replace ASM pipeline) ──────────
-        ir_program = None
-        if args.ir or args.ir_save or args.cfg:
+        _needs_ir = args.ir or args.ir_save or args.cfg or args.O1 or args.O2
+        if _needs_ir:
             if args.verbose:
                 print("[INFO] Phase 3b: IR generation...")
             ir_generator = IRGenerator(
@@ -427,6 +440,19 @@ def main():
             ir_program = ir_generator.get_ir()
             if args.verbose:
                 print("[OK] IR generated")
+
+        # ── Optimization pipeline ─────────────────────────────────────────────
+        opt_stats = None
+        if ir_program is not None and (args.O1 or args.O2):
+            if args.O2:
+                opt_level = OptimizationLevel.O2
+            else:
+                opt_level = OptimizationLevel.O1
+            if args.verbose:
+                print(f"[INFO] Phase 3c: Optimization ({opt_level.name})...")
+            opt_stats = optimize_program(ir_program, level=opt_level)
+            if args.verbose:
+                print(f"[OK] Optimization complete")
         # ─────────────────────────────────────────────────────────────────────
 
         if args.verbose:
@@ -476,6 +502,10 @@ def main():
     if args.asm:
         asm_file = save_asm_code(asm_source, source_file, args.output)
         print(f"[OK] ASM saved in {asm_file}")
+
+    if opt_stats is not None:
+        print(f"\n========== OPTIMIZER ({opt_stats.level.name}) ==========")
+        print(opt_stats)
 
     if args.ir and ir_program is not None:
         print("\n========== IR ==========")

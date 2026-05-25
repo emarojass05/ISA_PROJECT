@@ -21,17 +21,18 @@ Grafo de dependencias
 Se agrega un arco de instruccion i a instruccion j (j debe ir despues de i)
 cuando existe alguna de estas dependencias:
 
-  RAW (Read After Write):   i define X, j usa X       -> real, no mover j antes de i
+  RAW (Read After Write):   i define X, j usa X       -> real
   WAR (Write After Read):   i usa X,   j define X     -> no mover j antes de i
-  WAW (Write After Write):  i define X, j define X    -> mantener orden de escrituras
+  WAW (Write After Write):  i define X, j define X    -> mantener orden
   MEM (memoria):            cualquier par load/store  -> orden conservador
-  CTRL (control):           labels al inicio, terminadores al final (fijos)
+  BARRIER (IRCall):         barrera de dos lados, nada cruza un call
 
 Restricciones fijas
 -------------------
   - IRLabel al inicio del bloque SIEMPRE queda en posicion 0.
   - Terminadores (IRGoto, IRIfTrue, IRIfFalse, IRReturn) SIEMPRE al final.
-  - IRCall ordena todo lo que este antes/despues de el (barrera).
+  - IRCall es barrera de dos lados: todo lo anterior debe precederlo,
+    y todo lo posterior debe ir despues.
 
 Interfaz publica
 ----------------
@@ -69,7 +70,7 @@ def _is_memory(i: IRInstruction) -> bool:
     return isinstance(i, (IRLoad, IRStore))
 
 def _is_barrier(i: IRInstruction) -> bool:
-    """Instrucciones que actuan como barrera: nada puede cruzarlas."""
+    """IRCall actua como barrera: nada puede cruzarla en ningun sentido."""
     return isinstance(i, IRCall)
 
 
@@ -109,17 +110,12 @@ def _build_dag(instrs: List[IRInstruction]) -> List[DepNode]:
     n = len(instrs)
     nodes = [DepNode(idx=i, instr=instrs[i]) for i in range(n)]
 
-    # Para cada variable: ultimo indice que la definio
     last_def: Dict[str, int] = {}
-    # Para cada variable: lista de indices que la usaron (para WAR)
     last_uses: Dict[str, List[int]] = {}
-    # Indice del ultimo acceso a memoria
     last_mem: int = -1
-    # Indice de la ultima barrera (IRCall)
     last_barrier: int = -1
 
     def add_edge(src: int, dst: int) -> None:
-        """Agrega arco src -> dst si no existe ya."""
         if dst not in nodes[src].succs:
             nodes[src].succs.append(dst)
             nodes[dst].preds_count += 1
@@ -128,9 +124,16 @@ def _build_dag(instrs: List[IRInstruction]) -> List[DepNode]:
         uses_j = instr.uses()
         defs_j = instr.defs()
 
-        # Dependencia de barrera: todo va despues de la ultima barrera
+        # Barrera hacia adelante: todo despues de la ultima barrera va despues
         if last_barrier >= 0 and j != last_barrier:
             add_edge(last_barrier, j)
+
+        # Barrera hacia atras: si j ES una barrera (IRCall), todas las
+        # instrucciones anteriores deben precederla.
+        # Esto garantiza que los params no se muevan despues del call.
+        if _is_barrier(instr):
+            for k in range(j):
+                add_edge(k, j)
 
         # RAW: j usa variables definidas por instrucciones anteriores
         for var in uses_j:
@@ -179,12 +182,9 @@ def _compute_priorities(nodes: List[DepNode]) -> None:
     Calcula la prioridad de cada nodo = longitud del camino critico
     desde ese nodo hasta un nodo hoja (sin sucesores).
 
-    Topological order inverso (de hojas hacia raices).
     priority[i] = 1 + max(priority[succ] for succ in succs[i])
     """
     n = len(nodes)
-    # Procesamos en orden inverso de indices (aproximacion valida para DAGs
-    # construidos en orden; para robustez hacemos iteracion hasta convergencia)
     changed = True
     while changed:
         changed = False
@@ -208,34 +208,19 @@ def _list_schedule(nodes: List[DepNode]) -> List[IRInstruction]:
     """
     Ejecuta el algoritmo de list scheduling sobre el DAG.
 
-    Invariante: un nodo esta "listo" cuando todos sus predecesores
-    han sido agendados (preds_count == 0).
-
-    Criterio de seleccion: mayor prioridad; en empate, menor idx original
-    (mantiene el orden original cuando no hay diferencia).
+    Criterio de seleccion: mayor prioridad; en empate, mayor idx original
+    (favorece instrucciones independientes sobre recien desbloqueadas).
     """
-    # Copia de preds_count para no mutar los nodos originales
     pending = [node.preds_count for node in nodes]
-
-    # Cola inicial: nodos sin predecesores
     ready = [i for i, p in enumerate(pending) if p == 0]
-
     scheduled: List[IRInstruction] = []
     scheduled_set: Set[int] = set()
 
     while ready:
-        # Elegir nodo de mayor prioridad.
-        # Desempate: mayor idx original = instruccion mas tardia en el orden
-        # original. Esto favorece instrucciones independientes (que suelen
-        # tener indices mayores) sobre instrucciones dependientes recien
-        # desbloqueadas, llenando el hueco del RAW hazard.
         best = max(ready, key=lambda i: (nodes[i].priority, nodes[i].idx))
         ready.remove(best)
-
         scheduled.append(nodes[best].instr)
         scheduled_set.add(best)
-
-        # Actualizar predecesores de sucesores
         for s in nodes[best].succs:
             pending[s] -= 1
             if pending[s] == 0:
@@ -252,7 +237,7 @@ def schedule_block(block) -> int:
     """
     Reordena las instrucciones de un BasicBlock usando list scheduling.
 
-    Restricciones fijas antes de schedular:
+    Restricciones fijas:
       - El label inicial (si existe) se fija en posicion 0.
       - Los terminadores se fijan al final.
       - El cuerpo schedulable es todo lo que queda en el medio.
@@ -263,18 +248,15 @@ def schedule_block(block) -> int:
     if len(instrs) <= 1:
         return 0
 
-    # Separar label inicial, cuerpo y terminadores
     prefix: List[IRInstruction] = []
     suffix: List[IRInstruction] = []
     body:   List[IRInstruction] = []
 
     i = 0
-    # Label al inicio
     if instrs and _is_label(instrs[0]):
         prefix.append(instrs[0])
         i = 1
 
-    # Terminadores al final
     j = len(instrs) - 1
     while j >= i and _is_terminator(instrs[j]):
         suffix.insert(0, instrs[j])
@@ -283,17 +265,14 @@ def schedule_block(block) -> int:
     body = list(instrs[i:j+1])
 
     if len(body) <= 1:
-        return 0   # nada que reordenar
+        return 0
 
-    # Guardar orden original para contar movimientos
     original_strs = [str(x) for x in body]
 
-    # Construir DAG y schedular
     nodes = _build_dag(body)
     _compute_priorities(nodes)
     new_body = _list_schedule(nodes)
 
-    # Contar instrucciones movidas
     moves = sum(1 for a, b in zip(original_strs, [str(x) for x in new_body]) if a != b)
 
     block.instructions = prefix + new_body + suffix
@@ -320,13 +299,9 @@ def schedule_function(ir_func: IRFunction) -> SchedulerStats:
     """
     Aplica list scheduling a todos los bloques basicos de una funcion.
 
-    Construye el CFG para obtener los bloques, schedula cada uno
-    y re-aplana el body.
-
     Modifica ir_func.body in-place.
     """
     stats = SchedulerStats()
-
     cfg = CFG.build_from_function(ir_func)
 
     for block in cfg.blocks:
@@ -336,13 +311,11 @@ def schedule_function(ir_func: IRFunction) -> SchedulerStats:
         if moved > 0:
             stats.blocks_changed += 1
 
-    # Re-aplanar
     ir_func.body = [
         instr
         for block in cfg.blocks
         for instr in block.instructions
     ]
-
     return stats
 
 
