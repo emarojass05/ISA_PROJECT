@@ -15,23 +15,23 @@ La implementación utiliza registros intermedios de pipeline para separar las et
 
 El procesador trabaja con una arquitectura tipo Harvard, ya que la memoria de instrucciones y la memoria de datos se modelan como módulos separados. Esto facilita la simulación con `iverilog`, permite cargar programas en la memoria de instrucciones mediante archivos `.hex` y permite cargar archivos externos en la memoria de datos para pruebas de cifrado.
 
-| Aspecto | Decisión de diseño |
-| --- | --- |
-| Tipo de procesador | RISC de 32 bits |
-| Organización | Pipeline lógico de 5 etapas |
-| Etapas | IF, ID, EX, MEM, WB |
-| Memoria | Harvard: IMEM separada de DMEM |
-| Ancho de palabra | 32 bits |
-| Ancho del PC | 32 bits |
-| Banco de registros | 32 registros de 32 bits |
+| Aspecto                  | Decisión de diseño                   |
+| ------------------------ | ------------------------------------ |
+| Tipo de procesador       | RISC de 32 bits                      |
+| Organización             | Pipeline lógico de 5 etapas          |
+| Etapas                   | IF, ID, EX, MEM, WB                  |
+| Memoria                  | Harvard: IMEM separada de DMEM       |
+| Ancho de palabra         | 32 bits                              |
+| Ancho del PC             | 32 bits                              |
+| Banco de registros       | 32 registros de 32 bits              |
 | Memoria de instrucciones | Parametrizable mediante `IMEM_DEPTH` |
-| Memoria de datos | Parametrizable mediante `DMEM_DEPTH` |
-| Módulo principal | `src/cpu/cpu_top.sv` |
-| Definiciones del ISA | `src/cpu/isa_defs.sv` |
-| Unidad de seguridad | `src/cpu/sec_alu.sv` |
-| Bóveda de llaves | `src/cpu/key_vault.sv` |
-| Detección de riesgos | `src/cpu/hazard_unit.sv` |
-| Forwarding | `src/cpu/forwarding_unit.sv` |
+| Memoria de datos         | Parametrizable mediante `DMEM_DEPTH` |
+| Módulo principal         | `src/cpu/cpu_top.sv`                 |
+| Definiciones del ISA     | `src/cpu/isa_defs.sv`                |
+| Unidad de seguridad      | `src/cpu/sec_alu.sv`                 |
+| Bóveda de llaves         | `src/cpu/key_vault.sv`               |
+| Detección de riesgos     | `src/cpu/hazard_unit.sv`             |
+| Forwarding               | `src/cpu/forwarding_unit.sv`         |
 
 El diseño separa claramente la lógica de control, el datapath principal, la memoria, la bóveda de llaves y la ALU de seguridad. Esta modularidad permite probar cada componente de forma independiente mediante testbenches específicos.
 
@@ -49,30 +49,30 @@ El módulo principal de integración es:
 
 Este módulo instancia y conecta los principales bloques del procesador:
 
-| Instancia | Módulo | Función |
-| --- | --- | --- |
-| `u_pc` | `pc.sv` | Mantiene el Program Counter |
-| `u_pc_adder` | `pc_adder.sv` | Calcula `PC + 4` |
-| `u_imem` | `instr_mem.sv` | Memoria de instrucciones |
-| `u_decoder` | `decoder.sv` | Decodifica campos de instrucción |
-| `u_cu` | `control_unit.sv` | Genera señales de control |
-| `u_rf` | `register_file.sv` | Banco de registros |
-| `u_alu` | `alu.sv` | Operaciones aritméticas y lógicas |
-| `u_sec_alu` | `sec_alu.sv` | Operaciones de seguridad |
-| `u_key_vault` | `key_vault.sv` | Almacenamiento protegido de llaves |
-| `u_dmem` | `data_mem.sv` | Memoria de datos |
-| `u_hazard` | `hazard_unit.sv` | Control de stalls y flushes |
+| Instancia      | Módulo               | Función                            |
+| -------------- | -------------------- | ---------------------------------- |
+| `u_pc`         | `pc.sv`              | Mantiene el Program Counter        |
+| `u_pc_adder`   | `pc_adder.sv`        | Calcula `PC + 4`                   |
+| `u_imem`       | `instr_mem.sv`       | Memoria de instrucciones           |
+| `u_decoder`    | `decoder.sv`         | Decodifica campos de instrucción   |
+| `u_cu`         | `control_unit.sv`    | Genera señales de control          |
+| `u_rf`         | `register_file.sv`   | Banco de registros                 |
+| `u_alu`        | `alu.sv`             | Operaciones aritméticas y lógicas  |
+| `u_sec_alu`    | `sec_alu.sv`         | Operaciones de seguridad           |
+| `u_key_vault`  | `key_vault.sv`       | Almacenamiento protegido de llaves |
+| `u_dmem`       | `data_mem.sv`        | Memoria de datos                   |
+| `u_hazard`     | `hazard_unit.sv`     | Control de stalls y flushes        |
 | `u_forwarding` | `forwarding_unit.sv` | Reenvío de resultados entre etapas |
 
 El módulo recibe como parámetros:
 
-| Parámetro | Descripción |
-| --- | --- |
-| `XLEN` | Ancho de palabra del procesador, por defecto 32 bits |
-| `IMEM_DEPTH` | Profundidad de la memoria de instrucciones |
-| `DMEM_DEPTH` | Profundidad de la memoria de datos |
+| Parámetro      | Descripción                                                       |
+| -------------- | ----------------------------------------------------------------- |
+| `XLEN`         | Ancho de palabra del procesador, por defecto 32 bits              |
+| `IMEM_DEPTH`   | Profundidad de la memoria de instrucciones                        |
+| `DMEM_DEPTH`   | Profundidad de la memoria de datos                                |
 | `PROGRAM_FILE` | Archivo `.hex` usado para inicializar la memoria de instrucciones |
-| `INITIAL_MEM` | Archivo `.mem` usado para inicializar la memoria de datos |
+| `INITIAL_MEM`  | Archivo `.mem` usado para inicializar la memoria de datos         |
 
 ---
 
@@ -86,11 +86,11 @@ El registro `if_id_t` guarda la información generada en la etapa de búsqueda d
 
 Campos principales:
 
-| Campo | Descripción |
-| --- | --- |
-| `pc` | PC de la instrucción actual |
-| `instr` | Instrucción obtenida desde la memoria de instrucciones |
-| `pc_plus4` | Dirección de la siguiente instrucción secuencial |
+| Campo      | Descripción                                            |
+| ---------- | ------------------------------------------------------ |
+| `pc`       | PC de la instrucción actual                            |
+| `instr`    | Instrucción obtenida desde la memoria de instrucciones |
+| `pc_plus4` | Dirección de la siguiente instrucción secuencial       |
 
 ### 4.2 Registro ID/EX
 
@@ -98,27 +98,27 @@ El registro `id_ex_t` guarda operandos, inmediatos y señales de control necesar
 
 Campos principales:
 
-| Campo | Descripción |
-| --- | --- |
-| `pc` | PC de la instrucción |
-| `pc_plus4` | PC + 4 |
-| `rs1_data` | Dato leído del registro fuente 1 |
-| `rs2_data` | Dato leído del registro fuente 2 |
-| `k_out` | Dato leído desde la bóveda de llaves |
-| `imm_ext` | Inmediato extendido |
-| `rs1_addr` | Dirección de `rs1` |
-| `rs2_addr` | Dirección de `rs2` |
-| `rd_addr` | Dirección del registro destino |
-| `pc_src` | Selección de siguiente PC |
-| `wb_src` | Fuente para write back |
-| `alu_op` | Operación de ALU |
-| `sec_op` | Operación de seguridad |
+| Campo       | Descripción                              |
+| ----------- | ---------------------------------------- |
+| `pc`        | PC de la instrucción                     |
+| `pc_plus4`  | PC + 4                                   |
+| `rs1_data`  | Dato leído del registro fuente 1         |
+| `rs2_data`  | Dato leído del registro fuente 2         |
+| `k_out`     | Dato leído desde la bóveda de llaves     |
+| `imm_ext`   | Inmediato extendido                      |
+| `rs1_addr`  | Dirección de `rs1`                       |
+| `rs2_addr`  | Dirección de `rs2`                       |
+| `rd_addr`   | Dirección del registro destino           |
+| `pc_src`    | Selección de siguiente PC                |
+| `wb_src`    | Fuente para write back                   |
+| `alu_op`    | Operación de ALU                         |
+| `sec_op`    | Operación de seguridad                   |
 | `reg_write` | Habilita escritura en banco de registros |
-| `mem_write` | Habilita escritura en memoria |
-| `alu_src` | Selecciona operando B de ALU |
-| `branch` | Indica instrucción branch |
-| `jal` | Indica salto con enlace |
-| `vault_we` | Habilita escritura en la bóveda |
+| `mem_write` | Habilita escritura en memoria            |
+| `alu_src`   | Selecciona operando B de ALU             |
+| `branch`    | Indica instrucción branch                |
+| `jal`       | Indica salto con enlace                  |
+| `vault_we`  | Habilita escritura en la bóveda          |
 
 ### 4.3 Registro EX/MEM
 
@@ -126,18 +126,18 @@ El registro `ex_mem_t` guarda resultados producidos en la etapa de ejecución.
 
 Campos principales:
 
-| Campo | Descripción |
-| --- | --- |
-| `alu_result` | Resultado de la ALU |
-| `sec_result` | Resultado de la ALU de seguridad |
-| `rs2_data` | Dato utilizado para stores |
-| `pc_plus4` | PC + 4 |
-| `pc_imm` | Dirección objetivo para branch |
-| `rd_addr` | Registro destino |
-| `wb_src` | Fuente de write back |
-| `reg_write` | Escritura en banco de registros |
-| `mem_write` | Escritura en memoria |
-| `vault_we` | Escritura en bóveda |
+| Campo          | Descripción                       |
+| -------------- | --------------------------------- |
+| `alu_result`   | Resultado de la ALU               |
+| `sec_result`   | Resultado de la ALU de seguridad  |
+| `rs2_data`     | Dato utilizado para stores        |
+| `pc_plus4`     | PC + 4                            |
+| `pc_imm`       | Dirección objetivo para branch    |
+| `rd_addr`      | Registro destino                  |
+| `wb_src`       | Fuente de write back              |
+| `reg_write`    | Escritura en banco de registros   |
+| `mem_write`    | Escritura en memoria              |
+| `vault_we`     | Escritura en bóveda               |
 | `branch_taken` | Resultado de evaluación de branch |
 
 ### 4.4 Registro MEM/WB
@@ -146,15 +146,15 @@ El registro `mem_wb_t` guarda los valores disponibles para la etapa de escritura
 
 Campos principales:
 
-| Campo | Descripción |
-| --- | --- |
-| `alu_result` | Resultado proveniente de la ALU |
-| `sec_result` | Resultado proveniente de `sec_alu` |
-| `mem_rdata` | Dato leído desde memoria |
-| `pc_plus4` | PC + 4 |
-| `rd_addr` | Registro destino |
-| `wb_src` | Selector de fuente de write back |
-| `reg_write` | Habilita escritura final en registros |
+| Campo        | Descripción                           |
+| ------------ | ------------------------------------- |
+| `alu_result` | Resultado proveniente de la ALU       |
+| `sec_result` | Resultado proveniente de `sec_alu`    |
+| `mem_rdata`  | Dato leído desde memoria              |
+| `pc_plus4`   | PC + 4                                |
+| `rd_addr`    | Registro destino                      |
+| `wb_src`     | Selector de fuente de write back      |
+| `reg_write`  | Habilita escritura final en registros |
 
 ---
 
@@ -173,10 +173,10 @@ El PC se actualiza con `if_pc_next`, siempre que `pc_write` esté habilitado. Si
 
 Componentes usados:
 
-| Módulo | Función |
-| --- | --- |
-| `pc.sv` | Registro del PC |
-| `pc_adder.sv` | Cálculo de `PC + 4` |
+| Módulo         | Función                |
+| -------------- | ---------------------- |
+| `pc.sv`        | Registro del PC        |
+| `pc_adder.sv`  | Cálculo de `PC + 4`    |
 | `instr_mem.sv` | Lectura de instrucción |
 
 El resultado de esta etapa se guarda en `if_id_reg`.
@@ -195,13 +195,13 @@ Flujo principal:
 
 El decoder extrae:
 
-| Campo | Bits |
-| --- | --- |
-| `opcode` | `[6:0]` |
-| `rd` | `[11:7]` |
+| Campo    | Bits      |
+| -------- | --------- |
+| `opcode` | `[6:0]`   |
+| `rd`     | `[11:7]`  |
 | `funct3` | `[14:12]` |
-| `rs1` | `[19:15]` |
-| `rs2` | `[24:20]` |
+| `rs1`    | `[19:15]` |
+| `rs2`    | `[24:20]` |
 | `funct7` | `[31:25]` |
 
 El inmediato se extiende según el tipo de instrucción.
@@ -233,13 +233,13 @@ El segundo operando se selecciona con:
 
 La ALU produce:
 
-| Señal | Descripción |
-| --- | --- |
+| Señal           | Descripción                |
+| --------------- | -------------------------- |
 | `ex_alu_result` | Resultado de operación ALU |
-| `ex_Z` | Flag zero |
-| `ex_N` | Flag negative |
-| `ex_C` | Flag carry |
-| `ex_V` | Flag overflow |
+| `ex_Z`          | Flag zero                  |
+| `ex_N`          | Flag negative              |
+| `ex_C`          | Flag carry                 |
+| `ex_V`          | Flag overflow              |
 
 #### Camino de seguridad
 
@@ -256,13 +256,13 @@ Produce:
 
 Las operaciones soportadas por `sec_alu` son:
 
-| Operación | Descripción |
-| --- | --- |
-| `SEC_ADDK` | Suma `a + key` |
-| `SEC_XORK` | XOR `a ^ key` |
-| `SEC_TEA` | Primitiva estilo TEA |
+| Operación  | Descripción                                        |
+| ---------- | -------------------------------------------------- |
+| `SEC_ADDK` | Suma `a + key`                                     |
+| `SEC_XORK` | XOR `a ^ key`                                      |
+| `SEC_TEA`  | Primitiva estilo TEA                               |
 | `SEC_AUTH` | Controlada fuera de `sec_alu`, mediante `auth_bit` |
-| `SEC_LDK` | Escritura en bóveda, no produce write back |
+| `SEC_LDK`  | Escritura en bóveda, no produce write back         |
 
 #### Branch
 
@@ -270,14 +270,14 @@ Los branches se evalúan usando los flags producidos por la ALU. Para branches, 
 
 Condiciones implementadas:
 
-| Branch | Condición |
-| --- | --- |
-| `beq` | `Z = 1` |
-| `bne` | `Z = 0` |
-| `blt` | `N != V` |
-| `bgt` | `!Z && (N == V)` |
-| `bge` | `N == V` |
-| `ble` | `Z || (N != V)` |
+| Branch | Condición        |
+| ------ | ---------------- |
+| `beq`  | `Z = 1`          |
+| `bne`  | `Z = 0`          |
+| `blt`  | `N != V`         |
+| `bgt`  | `!Z && (N == V)` |
+| `bge`  | `N == V`         |
+| `ble`  | `Z || (N != V)`  |
 
 La dirección objetivo se calcula como:
 
@@ -313,11 +313,11 @@ La etapa WB escribe el resultado final en el banco de registros cuando `reg_writ
 
 El valor escrito se selecciona mediante `wb_src`.
 
-| Selector | Fuente |
-| --- | --- |
-| `WB_ALU` | Resultado de ALU |
-| `WB_MEM` | Dato leído de memoria |
-| `WB_PC4` | PC + 4 |
+| Selector | Fuente                 |
+| -------- | ---------------------- |
+| `WB_ALU` | Resultado de ALU       |
+| `WB_MEM` | Dato leído de memoria  |
+| `WB_PC4` | PC + 4                 |
 | `WB_SEC` | Resultado de `sec_alu` |
 
 Flujo:
@@ -346,18 +346,18 @@ Recibe:
 
 Y genera:
 
-| Señal | Función |
-| --- | --- |
-| `pc_src` | Selección de fuente para el siguiente PC |
-| `reg_write` | Habilita escritura en registros |
-| `mem_write` | Habilita escritura en memoria |
-| `alu_src` | Selecciona inmediato o registro como segundo operando ALU |
-| `jal` | Indica instrucción `jal` |
-| `u_load` | Indica operación U-type |
-| `branch` | Indica instrucción branch |
-| `wb_src` | Selecciona dato para write back |
-| `alu_op` | Selecciona operación de ALU |
-| `sec_op` | Selecciona operación de seguridad |
+| Señal       | Función                                                   |
+| ----------- | --------------------------------------------------------- |
+| `pc_src`    | Selección de fuente para el siguiente PC                  |
+| `reg_write` | Habilita escritura en registros                           |
+| `mem_write` | Habilita escritura en memoria                             |
+| `alu_src`   | Selecciona inmediato o registro como segundo operando ALU |
+| `jal`       | Indica instrucción `jal`                                  |
+| `u_load`    | Indica operación U-type                                   |
+| `branch`    | Indica instrucción branch                                 |
+| `wb_src`    | Selecciona dato para write back                           |
+| `alu_op`    | Selecciona operación de ALU                               |
+| `sec_op`    | Selecciona operación de seguridad                         |
 
 La unidad de control es combinacional. No se implementa como FSM multiciclo; en su lugar, cada instrucción avanza por el pipeline y las señales de control viajan a través de los registros intermedios.
 
@@ -397,29 +397,29 @@ Su función es reducir riesgos de datos reenviando resultados recientes hacia la
 
 Entradas principales:
 
-| Entrada | Descripción |
-| --- | --- |
-| `id_ex_rs1` | Registro fuente 1 de la instrucción en EX |
-| `id_ex_rs2` | Registro fuente 2 de la instrucción en EX |
-| `ex_mem_rd` | Registro destino de la instrucción en MEM |
-| `ex_mem_reg_write` | Indica si EX/MEM escribirá registro |
-| `mem_wb_rd` | Registro destino de la instrucción en WB |
-| `mem_wb_reg_write` | Indica si MEM/WB escribirá registro |
+| Entrada            | Descripción                               |
+| ------------------ | ----------------------------------------- |
+| `id_ex_rs1`        | Registro fuente 1 de la instrucción en EX |
+| `id_ex_rs2`        | Registro fuente 2 de la instrucción en EX |
+| `ex_mem_rd`        | Registro destino de la instrucción en MEM |
+| `ex_mem_reg_write` | Indica si EX/MEM escribirá registro       |
+| `mem_wb_rd`        | Registro destino de la instrucción en WB  |
+| `mem_wb_reg_write` | Indica si MEM/WB escribirá registro       |
 
 Salidas:
 
-| Salida | Descripción |
-| --- | --- |
+| Salida      | Descripción               |
+| ----------- | ------------------------- |
 | `forward_a` | Selección para operando A |
 | `forward_b` | Selección para operando B |
 
 Codificación usada:
 
-| Valor | Fuente |
-| --- | --- |
-| `00` | Valor original desde `id_ex_reg` |
-| `10` | Resultado reenviado desde EX/MEM |
-| `01` | Resultado reenviado desde MEM/WB |
+| Valor | Fuente                           |
+| ----- | -------------------------------- |
+| `00`  | Valor original desde `id_ex_reg` |
+| `10`  | Resultado reenviado desde EX/MEM |
+| `01`  | Resultado reenviado desde MEM/WB |
 
 Esto permite resolver dependencias como:
 
@@ -438,12 +438,12 @@ La unidad de riesgos se encuentra en:
 
 Genera señales para controlar stalls y flushes:
 
-| Señal | Función |
-| --- | --- |
-| `pc_write` | Permite o detiene la actualización del PC |
+| Señal         | Función                                               |
+| ------------- | ----------------------------------------------------- |
+| `pc_write`    | Permite o detiene la actualización del PC             |
 | `if_id_write` | Permite o detiene la actualización del registro IF/ID |
-| `if_id_flush` | Limpia la instrucción en IF/ID |
-| `id_ex_flush` | Limpia la instrucción en ID/EX |
+| `if_id_flush` | Limpia la instrucción en IF/ID                        |
+| `id_ex_flush` | Limpia la instrucción en ID/EX                        |
 
 La unidad recibe información sobre los registros fuente de la instrucción en ID, los registros destino de instrucciones en etapas posteriores y señales de control como `branch_taken` y `jump_taken`.
 
@@ -459,11 +459,11 @@ La bóveda de llaves se implementa en:
 
 Parámetros principales:
 
-| Parámetro | Valor por defecto | Descripción |
-| --- | --- | --- |
-| `XLEN` | 32 | Ancho de palabra |
-| `KEYS` | 4 | Cantidad de llaves |
-| `WORDS_PER_KEY` | 4 | Palabras de 32 bits por llave |
+| Parámetro       | Valor por defecto | Descripción                   |
+| --------------- | ----------------- | ----------------------------- |
+| `XLEN`          | 32                | Ancho de palabra              |
+| `KEYS`          | 4                 | Cantidad de llaves            |
+| `WORDS_PER_KEY` | 4                 | Palabras de 32 bits por llave |
 
 La bóveda se modela como un arreglo interno:
 
@@ -536,20 +536,20 @@ La ALU de seguridad se encuentra en:
 
 Entradas principales:
 
-| Entrada | Descripción |
-| --- | --- |
-| `a` | Primer operando |
-| `b` | Segundo operando |
-| `key` | Palabra leída desde la bóveda |
-| `sec_op` | Operación de seguridad |
-| `auth_en` | Estado de autenticación |
+| Entrada   | Descripción                   |
+| --------- | ----------------------------- |
+| `a`       | Primer operando               |
+| `b`       | Segundo operando              |
+| `key`     | Palabra leída desde la bóveda |
+| `sec_op`  | Operación de seguridad        |
+| `auth_en` | Estado de autenticación       |
 
 Salidas:
 
-| Salida | Descripción |
-| --- | --- |
-| `result` | Resultado de seguridad |
-| `exception` | Señal de excepción |
+| Salida      | Descripción            |
+| ----------- | ---------------------- |
+| `result`    | Resultado de seguridad |
+| `exception` | Señal de excepción     |
 
 Operaciones principales:
 
@@ -646,13 +646,13 @@ Ejemplo:
 
 Flujo por etapas:
 
-| Etapa | Acción |
-| --- | --- |
-| IF | Se lee la instrucción desde `instr_mem` |
-| ID | Se decodifican `opcode`, `rs1`, `rs2`, `rd`; se leen `x3` y `x4` |
-| EX | La ALU calcula `R[x3] + R[x4]` |
-| MEM | No hay acceso a memoria |
-| WB | Se escribe el resultado en `x5` |
+| Etapa | Acción                                                           |
+| ----- | ---------------------------------------------------------------- |
+| IF    | Se lee la instrucción desde `instr_mem`                          |
+| ID    | Se decodifican `opcode`, `rs1`, `rs2`, `rd`; se leen `x3` y `x4` |
+| EX    | La ALU calcula `R[x3] + R[x4]`                                   |
+| MEM   | No hay acceso a memoria                                          |
+| WB    | Se escribe el resultado en `x5`                                  |
 
 ---
 
@@ -664,13 +664,13 @@ Ejemplo:
 
 Flujo por etapas:
 
-| Etapa | Acción |
-| --- | --- |
-| IF | Se lee la instrucción |
-| ID | Se decodifica y se lee `x10` |
-| EX | La ALU calcula `R[x10] + offset` |
-| MEM | Se lee la memoria de datos |
-| WB | Se escribe el dato leído en `x5` |
+| Etapa | Acción                           |
+| ----- | -------------------------------- |
+| IF    | Se lee la instrucción            |
+| ID    | Se decodifica y se lee `x10`     |
+| EX    | La ALU calcula `R[x10] + offset` |
+| MEM   | Se lee la memoria de datos       |
+| WB    | Se escribe el dato leído en `x5` |
 
 Ejemplo store:
 
@@ -678,13 +678,13 @@ Ejemplo store:
 
 Flujo por etapas:
 
-| Etapa | Acción |
-| --- | --- |
-| IF | Se lee la instrucción |
-| ID | Se leen `x5` y `x10` |
-| EX | Se calcula la dirección efectiva |
-| MEM | Se escribe `x5` en memoria |
-| WB | No hay escritura en registros |
+| Etapa | Acción                           |
+| ----- | -------------------------------- |
+| IF    | Se lee la instrucción            |
+| ID    | Se leen `x5` y `x10`             |
+| EX    | Se calcula la dirección efectiva |
+| MEM   | Se escribe `x5` en memoria       |
+| WB    | No hay escritura en registros    |
 
 ---
 
@@ -696,13 +696,13 @@ Ejemplo:
 
 Flujo por etapas:
 
-| Etapa | Acción |
-| --- | --- |
-| IF | Se lee la instrucción |
-| ID | Se decodifica `SEC_XORK`, se leen `x4` y `x3`, y se consulta la bóveda |
-| EX | `sec_alu` calcula `R[x4] ^ key` |
-| MEM | No hay acceso a memoria |
-| WB | El resultado se escribe en `x5` |
+| Etapa | Acción                                                                 |
+| ----- | ---------------------------------------------------------------------- |
+| IF    | Se lee la instrucción                                                  |
+| ID    | Se decodifica `SEC_XORK`, se leen `x4` y `x3`, y se consulta la bóveda |
+| EX    | `sec_alu` calcula `R[x4] ^ key`                                        |
+| MEM   | No hay acceso a memoria                                                |
+| WB    | El resultado se escribe en `x5`                                        |
 
 Para que la operación funcione correctamente, debe ejecutarse antes:
 
@@ -752,18 +752,18 @@ Esto detiene la simulación. En la versión actual no se implementa un mecanismo
 
 ## 20. Justificación de decisiones de diseño
 
-| Decisión | Justificación |
-| --- | --- |
-| Instrucciones de 32 bits | Simplifican fetch, decode y cálculo del PC |
-| Separación IMEM/DMEM | Facilita cargar programas y datos por separado |
-| Pipeline lógico de 5 etapas | Permite organizar claramente IF, ID, EX, MEM y WB |
-| Registros de pipeline | Mantienen datos y señales de control entre etapas |
-| Forwarding | Reduce stalls por dependencias de datos |
-| Hazard unit | Controla stalls y flushes en branches, jumps y dependencias |
-| Bóveda de llaves separada | Evita que las llaves sean tratadas como memoria normal |
-| Autenticación por `auth` | Protege operaciones de seguridad |
-| `sec_alu` separada de la ALU general | Mantiene modularidad entre operaciones comunes y criptográficas |
-| TEA como primitiva | Reduce complejidad de hardware frente a una implementación completa de 32 rondas |
+| Decisión                             | Justificación                                                                    |
+| ------------------------------------ | -------------------------------------------------------------------------------- |
+| Instrucciones de 32 bits             | Simplifican fetch, decode y cálculo del PC                                       |
+| Separación IMEM/DMEM                 | Facilita cargar programas y datos por separado                                   |
+| Pipeline lógico de 5 etapas          | Permite organizar claramente IF, ID, EX, MEM y WB                                |
+| Registros de pipeline                | Mantienen datos y señales de control entre etapas                                |
+| Forwarding                           | Reduce stalls por dependencias de datos                                          |
+| Hazard unit                          | Controla stalls y flushes en branches, jumps y dependencias                      |
+| Bóveda de llaves separada            | Evita que las llaves sean tratadas como memoria normal                           |
+| Autenticación por `auth`             | Protege operaciones de seguridad                                                 |
+| `sec_alu` separada de la ALU general | Mantiene modularidad entre operaciones comunes y criptográficas                  |
+| TEA como primitiva                   | Reduce complejidad de hardware frente a una implementación completa de 32 rondas |
 
 ---
 
@@ -773,13 +773,13 @@ Aunque el ISA puede explicarse mediante las etapas clásicas IF, ID, EX, MEM y W
 
 Por lo tanto:
 
-| Aspecto | Multiciclo clásico | Implementación actual |
-| --- | --- | --- |
-| Instrucciones simultáneas | Una | Varias en distintas etapas |
-| Control principal | FSM por etapa | Control combinacional + registros de pipeline |
-| Riesgos de datos | No aparecen igual | Requieren forwarding y hazard unit |
-| Branches | Se resuelven secuencialmente | Pueden requerir flush |
-| Throughput | Menor | Mayor cuando no hay stalls |
+| Aspecto                   | Multiciclo clásico           | Implementación actual                         |
+| ------------------------- | ---------------------------- | --------------------------------------------- |
+| Instrucciones simultáneas | Una                          | Varias en distintas etapas                    |
+| Control principal         | FSM por etapa                | Control combinacional + registros de pipeline |
+| Riesgos de datos          | No aparecen igual            | Requieren forwarding y hazard unit            |
+| Branches                  | Se resuelven secuencialmente | Pueden requerir flush                         |
+| Throughput                | Menor                        | Mayor cuando no hay stalls                    |
 
 ---
 
