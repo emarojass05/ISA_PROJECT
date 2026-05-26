@@ -1,0 +1,53 @@
+{
+  "name": "frc-language",
+  "displayName": "FRC Language Support",
+  "description": "Soporte para el lenguaje FRC: resaltado de sintaxis, autocompletado y diagnósticos.",
+  "version": "0.0.1",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:frc"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "frc",
+        "aliases": ["FRC", "frc"],
+        "extensions": [".fr"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "frc",
+        "scopeName": "source.frc",
+        "path": "./syntaxes/frc.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "FRC Language",
+      "properties": {
+        "frc.compilerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to frc compiler (e.g. /path/to/compiler/frc)"
+        },
+        "frc.diagnosticsDelay": {
+          "type": "number",
+          "default": 800,
+          "description": "ms to wait before re-validating the document after a change."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.0.0"
+  }
+}

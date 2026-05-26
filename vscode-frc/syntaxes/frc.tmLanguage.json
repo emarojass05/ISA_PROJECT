@@ -1,0 +1,93 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "FRC",
+  "scopeName": "source.frc",
+  "patterns": [
+    { "include": "#block_comment" },
+    { "include": "#line_comment" },
+    { "include": "#string" },
+    { "include": "#hex_literal" },
+    { "include": "#number" },
+    { "include": "#keyword" },
+    { "include": "#type" },
+    { "include": "#boolean" },
+    { "include": "#type_spec" },
+    { "include": "#function_call" },
+    { "include": "#annotation" },
+    { "include": "#operator" },
+    { "include": "#punctuation" },
+    { "include": "#identifier" }
+  ],
+  "repository": {
+    "block_comment": {
+      "name": "comment.block.frc",
+      "begin": "\\$<",
+      "end": ">\\$"
+    },
+    "line_comment": {
+      "name": "comment.line.frc",
+      "match": "\\$[^<].*$|\\$$"
+    },
+    "string": {
+      "name": "string.quoted.double.frc",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.frc",
+          "match": "\\\\[btnr\"\\\\]"
+        }
+      ]
+    },
+    "hex_literal": {
+      "name": "constant.numeric.hex.frc",
+      "match": "\\b0x[0-9a-fA-F]+\\b"
+    },
+    "number": {
+      "name": "constant.numeric.integer.frc",
+      "match": "\\b[0-9]+\\b"
+    },
+    "keyword": {
+      "name": "keyword.control.frc",
+      "match": "\\b(fonc|ret|si|sinon|alors|pour|invoquer|depuis|suivre)\\b"
+    },
+    "type": {
+      "name": "storage.type.frc",
+      "match": "\\b(int|bool|char|void)\\b"
+    },
+    "boolean": {
+      "name": "constant.language.boolean.frc",
+      "match": "\\b(vrai|faux)\\b"
+    },
+    "type_spec": {
+      "comment": "Highlights [int], [bool], [char], [void] as a unit",
+      "name": "storage.type.annotation.frc",
+      "match": "\\[(int|bool|char|void)\\]"
+    },
+    "function_call": {
+      "name": "entity.name.function.frc",
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s*\\()"
+    },
+    "annotation": {
+      "name": "entity.name.tag.frc",
+      "match": "\\?\\s*[a-zA-Z_][a-zA-Z0-9_]*"
+    },
+    "operator": {
+      "name": "keyword.operator.frc",
+      "match": "\\+\\+|--|<<=|>>=|==|!=|>=|<=|&&|\\|\\||<<|>>|[+\\-*/%^=<>!&|@]"
+    },
+    "punctuation": {
+      "patterns": [
+        { "name": "punctuation.terminator.frc", "match": ";" },
+        { "name": "punctuation.separator.frc",  "match": "," },
+        { "name": "punctuation.definition.block.frc", "match": "[{}]" },
+        { "name": "punctuation.brackets.frc",   "match": "[\\[\\]()]" },
+        { "name": "punctuation.separator.frc",  "match": ":" }
+      ]
+    },
+    "identifier": {
+      "name": "variable.other.frc",
+      "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+    }
+  }
+}
