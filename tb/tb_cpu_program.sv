@@ -14,12 +14,17 @@ module tb_cpu_program;
 
     parameter REGISTER_DUMP_FILE = "build/sim/register_dump.txt";
     parameter MEMORY_DUMP_FILE   = "build/sim/memory_dump.txt";
+    parameter CYCLE_COUNT_FILE   = "build/sim/cycle_count.txt";
+
+    // j offset=0 (opcode=0x07, all other fields=0): the PROGRAM_END self-loop
+    localparam logic [31:0] HALT_INSTR = 32'h00000007;
 
     logic clk;
     logic rst;
 
-    int cycle_count;
-    int drain_count;
+    int          cycle_count;
+    int          drain_count;
+    logic [31:0] prev_pc;
 
     cpu_top #(
         .XLEN(XLEN),
@@ -104,13 +109,30 @@ module tb_cpu_program;
         end
     endtask
 
+    task automatic dump_cycle_count;
+        input int cycles;
+        integer file;
+        begin
+            file = $fopen(CYCLE_COUNT_FILE, "w");
+            if (file == 0) begin
+                $display("[ERR] Could not open cycle count file: %s", CYCLE_COUNT_FILE);
+            end else begin
+                $fdisplay(file, "%0d", cycles);
+                $fclose(file);
+                $display("[OK] Cycle count (%0d) written to %s", cycles, CYCLE_COUNT_FILE);
+            end
+        end
+    endtask
+
     task automatic dump_and_finish;
         input string reason;
+        input int    cycles;
         begin
             $display("");
             $display("[STOP] %s", reason);
             $display("[INFO] Dumping register file and data memory...");
 
+            dump_cycle_count(cycles);
             dump_register_file();
             dump_data_memory();
 
@@ -128,8 +150,9 @@ module tb_cpu_program;
         $display("DRAIN_CYCLES = %0d", DRAIN_CYCLES);
         $display("");
 
-        rst = 1'b1;
+        rst         = 1'b1;
         cycle_count = 0;
+        prev_pc     = 32'hFFFFFFFF;  // sentinel: differs from any real PC at startup
 
         repeat (3) @(posedge clk);
         #1;
@@ -145,6 +168,20 @@ module tb_cpu_program;
                 dut.if_instr
             );
 
+            // PROGRAM_END detection: the compiler emits "j PROGRAM_END" (self-loop)
+            // which encodes as 0x00000007. We require BOTH the halt encoding AND
+            // PC == prev_pc so that the same instruction passing through the IF stage
+            // during pipeline fill (before jal redirects PC) does not trigger a false halt.
+            if (dut.if_instr == HALT_INSTR && dut.if_pc_cur == prev_pc) begin
+                $display("[HALT] PROGRAM_END detected at cycle %0d (pc=%08h)", cycle_count, dut.if_pc_cur);
+                for (drain_count = 0; drain_count < DRAIN_CYCLES; drain_count++) begin
+                    @(posedge clk);
+                    #1;
+                end
+                dump_and_finish("PROGRAM_END detected", cycle_count);
+            end
+
+            prev_pc = dut.if_pc_cur;
             @(posedge clk);
             #1;
             cycle_count++;
@@ -155,7 +192,7 @@ module tb_cpu_program;
             #1;
         end
 
-        dump_and_finish("MAX_CYCLES reached");
+        dump_and_finish("MAX_CYCLES reached", MAX_CYCLES);
     end
 
 endmodule
