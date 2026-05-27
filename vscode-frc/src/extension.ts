@@ -210,11 +210,14 @@ function run_diagnostics(
 
   fs.writeFileSync(tmp_file, document.getText(), 'utf8');
 
+  const tmp_hex = path.join(project_root, 'build', 'bin', path.basename(tmp_file, '.fr') + '.hex');
+
   cp.exec(
     `"${compiler_path}" "${tmp_file}"`,
     { cwd: project_root },
     (_error, stdout, stderr) => {
       try { fs.unlinkSync(tmp_file); } catch (_) {}
+      try { fs.unlinkSync(tmp_hex); } catch (_) {}
       const diagnostics = parse_diagnostics(stdout + stderr, document);
       collection.set(document.uri, diagnostics);
     },
