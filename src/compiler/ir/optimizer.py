@@ -10,6 +10,7 @@ from .renamer import rename_program, rename_function, RenamerState
 from .dce import dce_program, eliminate_dead_code, DCEStats
 from .loop_unroller import unroll_program, unroll_function, UnrollStats
 from .scheduler import schedule_program, schedule_function, SchedulerStats
+from .copy_propagation import propagate_copies_program, propagate_copies_function
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +97,10 @@ def optimize_function(ir_func: IRFunction,
         rename_function(ir_func, state=rs)
         stats.rename_vars_created = rs.counter
 
-        # Pass 2: DCE
+        # Pass 2: copy propagation (eliminates rename-generated copies)
+        propagate_copies_function(ir_func)
+
+        # Pass 3: DCE
         dce_s: DCEStats = eliminate_dead_code(ir_func)
         stats.dce_instrs_removed = dce_s.instrs_removed
 
@@ -106,27 +110,33 @@ def optimize_function(ir_func: IRFunction,
         rename_function(ir_func, state=rs1)
         stats.rename_vars_created += rs1.counter
 
-        # Pass 2: initial DCE
+        # Pass 2: copy propagation
+        propagate_copies_function(ir_func)
+
+        # Pass 3: initial DCE
         dce_s1: DCEStats = eliminate_dead_code(ir_func)
         stats.dce_instrs_removed += dce_s1.instrs_removed
 
-        # Pass 3: loop unrolling
+        # Pass 4: loop unrolling
         unroll_s: UnrollStats = unroll_function(ir_func)
         stats.unroll_loops_expanded = (unroll_s.loops_full_unrolled +
                                        unroll_s.loops_partial_unrolled)
         stats.unroll_instrs_added   = max(0, unroll_s.instrs_after -
                                           unroll_s.instrs_before)
 
-        # Pass 4: DCE after unrolling (cleans extra temporals)
+        # Pass 5: DCE after unrolling (cleans extra temporals)
         dce_s2: DCEStats = eliminate_dead_code(ir_func)
         stats.dce_instrs_removed += dce_s2.instrs_removed
 
-        # Pass 5: rename after unrolling (maximizes scheduler freedom)
+        # Pass 6: rename after unrolling (maximizes scheduler freedom)
         rs2 = RenamerState()
         rename_function(ir_func, state=rs2)
         stats.rename_vars_created += rs2.counter
 
-        # Pass 6: instruction scheduling
+        # Pass 7: copy propagation after final rename
+        propagate_copies_function(ir_func)
+
+        # Pass 8: instruction scheduling
         sched_s: SchedulerStats = schedule_function(ir_func)
         stats.sched_instrs_moved    = sched_s.instrs_moved
         stats.sched_blocks_changed  = sched_s.blocks_changed
@@ -158,7 +168,10 @@ def optimize_program(ir_program: IRProgram,
         rs = rename_program(ir_program)
         stats.rename_vars_created = rs.counter
 
-        # Pass 2: DCE
+        # Pass 2: copy propagation
+        propagate_copies_program(ir_program)
+
+        # Pass 3: DCE
         dce_s: DCEStats = dce_program(ir_program)
         stats.dce_instrs_removed = dce_s.instrs_removed
 
@@ -167,26 +180,32 @@ def optimize_program(ir_program: IRProgram,
         rs1 = rename_program(ir_program)
         stats.rename_vars_created += rs1.counter
 
-        # Pass 2: initial DCE
+        # Pass 2: copy propagation
+        propagate_copies_program(ir_program)
+
+        # Pass 3: initial DCE
         dce_s1: DCEStats = dce_program(ir_program)
         stats.dce_instrs_removed += dce_s1.instrs_removed
 
-        # Pass 3: loop unrolling
+        # Pass 4: loop unrolling
         unroll_s: UnrollStats = unroll_program(ir_program)
         stats.unroll_loops_expanded = (unroll_s.loops_full_unrolled +
                                        unroll_s.loops_partial_unrolled)
         stats.unroll_instrs_added   = max(0, unroll_s.instrs_after -
                                           unroll_s.instrs_before)
 
-        # Pass 4: DCE after unrolling
+        # Pass 5: DCE after unrolling
         dce_s2: DCEStats = dce_program(ir_program)
         stats.dce_instrs_removed += dce_s2.instrs_removed
 
-        # Pass 5: rename after unrolling
+        # Pass 6: rename after unrolling
         rs2 = rename_program(ir_program)
         stats.rename_vars_created += rs2.counter
 
-        # Pass 6: instruction scheduling
+        # Pass 7: copy propagation after final rename
+        propagate_copies_program(ir_program)
+
+        # Pass 8: instruction scheduling
         sched_s: SchedulerStats = schedule_program(ir_program)
         stats.sched_instrs_moved   = sched_s.instrs_moved
         stats.sched_blocks_changed = sched_s.blocks_changed
