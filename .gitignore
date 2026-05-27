@@ -75,3 +75,6 @@ src/compiler/generated/
 
 # ANTLR4 JAR
 tools/*.jar
+
+# Extension files
+node_modules/
