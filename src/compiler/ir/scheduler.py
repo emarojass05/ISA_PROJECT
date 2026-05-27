@@ -6,7 +6,7 @@ from typing import Dict, List, Set, Tuple
 
 from .ir_types import (
     IRInstruction, IRLabel, IRGoto, IRIfTrue, IRIfFalse,
-    IRReturn, IRStore, IRLoad, IRCall,
+    IRReturn, IRStore, IRLoad, IRCall, IRParam,
 )
 from .ir_program import IRFunction, IRProgram
 from .cfg import CFG
@@ -51,6 +51,7 @@ def _build_dag(instrs: List[IRInstruction]) -> List[DepNode]:
     last_uses: Dict[str, List[int]] = {}
     last_mem: int = -1
     last_barrier: int = -1
+    last_param: int = -1   # enforce IRParam ordering within each call sequence
 
     def add_edge(src: int, dst: int) -> None:
         if dst not in nodes[src].succs:
@@ -92,6 +93,14 @@ def _build_dag(instrs: List[IRInstruction]) -> List[DepNode]:
             if last_mem >= 0:
                 add_edge(last_mem, j)
             last_mem = j
+
+        # Preserve IRParam order: each param must follow the previous one
+        if isinstance(instr, IRParam):
+            if last_param >= 0:
+                add_edge(last_param, j)
+            last_param = j
+        elif _is_barrier(instr):
+            last_param = -1   # reset across call boundaries
 
         if _is_barrier(instr):
             last_barrier = j
