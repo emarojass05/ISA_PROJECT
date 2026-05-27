@@ -23,6 +23,36 @@ module cpu_top #(
     logic       if_id_flush;
     logic       id_ex_flush;
 
+    logic       hazard_pc_write;
+    logic       hazard_if_id_write;
+    logic       hazard_if_id_flush;
+    logic       hazard_id_ex_flush;
+
+    logic       cache_stall;
+    logic       mem_read_enable;
+
+    logic [63:0] perf_cycles;
+    logic [63:0] perf_cache_stall_cycles;
+    logic [63:0] perf_retired_instructions;
+
+    logic [63:0] l1_read_accesses;
+    logic [63:0] l1_write_accesses;
+    logic [63:0] l1_read_hits;
+    logic [63:0] l1_read_misses;
+    logic [63:0] l1_write_hits;
+    logic [63:0] l1_write_misses;
+
+    logic [63:0] l2_read_accesses;
+    logic [63:0] l2_write_accesses;
+    logic [63:0] l2_read_hits;
+    logic [63:0] l2_read_misses;
+    logic [63:0] l2_write_hits;
+    logic [63:0] l2_write_misses;
+
+    logic [63:0] main_mem_accesses;
+    logic [63:0] main_mem_cycles;
+    logic [63:0] cache_stall_cycles;
+
     logic       id_jump_taken;
     logic       if_id_uses_rs1;
     logic       if_id_uses_rs2;
@@ -93,7 +123,7 @@ module cpu_top #(
             ex_mem_reg   <= '0;
             mem_wb_reg   <= '0;
             id_ex_funct3 <= '0;
-        end else begin
+        end else if (!cache_stall) begin
 
             if (if_id_write) begin
                 if (if_id_flush) begin
@@ -257,11 +287,16 @@ module cpu_top #(
         .branch_taken(ex_branch_taken),
         .jump_taken(id_jump_taken),
 
-        .pc_write(pc_write),
-        .if_id_write(if_id_write),
-        .if_id_flush(if_id_flush),
-        .id_ex_flush(id_ex_flush)
+        .pc_write(hazard_pc_write),
+        .if_id_write(hazard_if_id_write),
+        .if_id_flush(hazard_if_id_flush),
+        .id_ex_flush(hazard_id_ex_flush)
     );
+
+    assign pc_write    = hazard_pc_write && !cache_stall;
+    assign if_id_write = hazard_if_id_write && !cache_stall;
+    assign if_id_flush = hazard_if_id_flush && !cache_stall;
+    assign id_ex_flush = hazard_id_ex_flush && !cache_stall;
 
     forwarding_unit u_forwarding (
         .id_ex_rs1(id_ex_reg.rs1_addr),
@@ -438,17 +473,58 @@ module cpu_top #(
         end
     end
 
-    data_mem #(
+    assign mem_read_enable = (ex_mem_reg.wb_src == WB_MEM) && !ex_mem_reg.mem_write;
+
+    memory_hierarchy #(
         .XLEN(XLEN),
         .DEPTH(DMEM_DEPTH),
         .INITIAL_MEM(INITIAL_MEM)
     ) u_dmem (
         .clk(clk),
+        .rst(rst),
+        .mem_read_enable(mem_read_enable),
         .mem_write_enable(ex_mem_reg.mem_write),
         .mem_write_data(ex_mem_reg.rs2_data),
         .memory_address(ex_mem_reg.alu_result),
-        .mem_read_data(mem_rdata)
+        .mem_read_data(mem_rdata),
+        .cache_stall(cache_stall),
+
+        .l1_read_accesses(l1_read_accesses),
+        .l1_write_accesses(l1_write_accesses),
+        .l1_read_hits(l1_read_hits),
+        .l1_read_misses(l1_read_misses),
+        .l1_write_hits(l1_write_hits),
+        .l1_write_misses(l1_write_misses),
+
+        .l2_read_accesses(l2_read_accesses),
+        .l2_write_accesses(l2_write_accesses),
+        .l2_read_hits(l2_read_hits),
+        .l2_read_misses(l2_read_misses),
+        .l2_write_hits(l2_write_hits),
+        .l2_write_misses(l2_write_misses),
+
+        .main_mem_accesses(main_mem_accesses),
+        .main_mem_cycles(main_mem_cycles),
+        .cache_stall_cycles(cache_stall_cycles)
     );
+
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            perf_cycles <= 64'd0;
+            perf_cache_stall_cycles <= 64'd0;
+            perf_retired_instructions <= 64'd0;
+        end else begin
+            perf_cycles <= perf_cycles + 64'd1;
+
+            if (cache_stall) begin
+                perf_cache_stall_cycles <= perf_cache_stall_cycles + 64'd1;
+            end
+
+            if (!cache_stall && (mem_wb_reg.reg_write || ex_mem_reg.mem_write)) begin
+                perf_retired_instructions <= perf_retired_instructions + 64'd1;
+            end
+        end
+    end
 
     always @(*) begin
         case (mem_wb_reg.wb_src)

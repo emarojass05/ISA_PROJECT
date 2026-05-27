@@ -104,6 +104,74 @@ module tb_cpu_program;
         end
     endtask
 
+    task automatic print_rate;
+        input string label;
+        input logic [63:0] numerator;
+        input logic [63:0] denominator;
+        real rate;
+        begin
+            if (denominator != 64'd0) begin
+                rate = (numerator * 100.0) / denominator;
+                $display("%-30s = %0.2f%%", label, rate);
+            end else begin
+                $display("%-30s = N/A", label);
+            end
+        end
+    endtask
+
+    task automatic print_cpu_cache_metrics;
+        real ipc;
+        begin
+            $display("");
+            $display("===== CPU / CACHE METRICS =====");
+
+            $display("CPU cycles                    = %0d", dut.perf_cycles);
+            $display("Retired instructions          = %0d", dut.perf_retired_instructions);
+            $display("CPU cache stall cycles        = %0d", dut.perf_cache_stall_cycles);
+
+            if (dut.perf_cycles != 64'd0) begin
+                ipc = dut.perf_retired_instructions * 1.0 / dut.perf_cycles;
+                $display("IPC                           = %0.6f", ipc);
+            end else begin
+                $display("IPC                           = N/A");
+            end
+
+            $display("");
+            $display("===== L1-D METRICS =====");
+            $display("L1 read accesses              = %0d", dut.l1_read_accesses);
+            $display("L1 read hits                  = %0d", dut.l1_read_hits);
+            $display("L1 read misses                = %0d", dut.l1_read_misses);
+            print_rate("L1 read hit rate",  dut.l1_read_hits,   dut.l1_read_accesses);
+            print_rate("L1 read miss rate", dut.l1_read_misses, dut.l1_read_accesses);
+
+            $display("L1 write accesses             = %0d", dut.l1_write_accesses);
+            $display("L1 write hits                 = %0d", dut.l1_write_hits);
+            $display("L1 write misses               = %0d", dut.l1_write_misses);
+            print_rate("L1 write hit rate",  dut.l1_write_hits,   dut.l1_write_accesses);
+            print_rate("L1 write miss rate", dut.l1_write_misses, dut.l1_write_accesses);
+
+            $display("");
+            $display("===== L2 METRICS =====");
+            $display("L2 read accesses              = %0d", dut.l2_read_accesses);
+            $display("L2 read hits                  = %0d", dut.l2_read_hits);
+            $display("L2 read misses                = %0d", dut.l2_read_misses);
+            print_rate("L2 read hit rate",  dut.l2_read_hits,   dut.l2_read_accesses);
+            print_rate("L2 read miss rate", dut.l2_read_misses, dut.l2_read_accesses);
+
+            $display("L2 write accesses             = %0d", dut.l2_write_accesses);
+            $display("L2 write hits                 = %0d", dut.l2_write_hits);
+            $display("L2 write misses               = %0d", dut.l2_write_misses);
+            print_rate("L2 write hit rate",  dut.l2_write_hits,   dut.l2_write_accesses);
+            print_rate("L2 write miss rate", dut.l2_write_misses, dut.l2_write_accesses);
+
+            $display("");
+            $display("===== MAIN MEMORY METRICS =====");
+            $display("Main memory accesses          = %0d", dut.main_mem_accesses);
+            $display("Main memory cycles            = %0d", dut.main_mem_cycles);
+            $display("Cache stall cycles            = %0d", dut.cache_stall_cycles);
+        end
+    endtask
+
     task automatic dump_and_finish;
         input string reason;
         begin
@@ -113,6 +181,7 @@ module tb_cpu_program;
 
             dump_register_file();
             dump_data_memory();
+            print_cpu_cache_metrics();
 
             $display("");
             $display("CPU PROGRAM TEST FINISHED");

@@ -217,3 +217,44 @@ clear: ## Delete the entire build/ directory and all generated artifacts; usage:
 	@echo "Cleaning build/ folder..."
 	@rm -rf $(BUILD_DIR)
 	@echo "build/ folder cleared."
+
+
+# =========================
+# Cache Architecture Tests
+# =========================
+
+.PHONY: sv-cache sv-cache-memory sv-cache-cpu sv-cache-build-memory sv-cache-build-cpu sv-cpu-cache-exec
+
+sv-cache: sv-cache-memory sv-cache-cpu ## Build and run all cache-related SystemVerilog testbenches.
+	@echo "All cache tests completed."
+
+sv-cache-build-memory: $(CPU_SRC_DIR)/memory_hierarchy.sv $(TB_DIR)/tb_memory_hierarchy.sv ## Build the memory hierarchy testbench; usage: make sv-cache-build-memory.
+	@mkdir -p $(SIM_BUILD)
+	$(IVERILOG) $(FLAGS) \
+		-s tb_memory_hierarchy \
+		-o $(SIM_BUILD)/memory_hierarchy.vvp \
+		$^
+
+sv-cache-memory: sv-cache-build-memory ## Run the memory hierarchy cache testbench; usage: make sv-cache-memory.
+	$(VVP) $(SIM_BUILD)/memory_hierarchy.vvp
+
+sv-cache-build-cpu: $(CPU_SRC) $(TB_DIR)/tb_cpu_cache.sv ## Build the CPU + cache integration testbench; usage: make sv-cache-build-cpu.
+	@mkdir -p $(SIM_BUILD)
+	$(IVERILOG) $(FLAGS) \
+		-s tb_cpu_cache \
+		-o $(SIM_BUILD)/cpu_cache.vvp \
+		$^
+
+sv-cache-cpu: sv-cache-build-cpu ## Run the CPU + cache integration testbench; usage: make sv-cache-cpu.
+	$(VVP) $(SIM_BUILD)/cpu_cache.vvp
+
+sv-cpu-cache-exec: $(CPU_SRC) $(TB_DIR)/tb_cpu_program.sv ## Build and run the CPU with cache using PROGRAM=<hex>, optional INITIAL_MEM=<mem>, MAX_CYCLES=<cycles>.
+	@mkdir -p $(SIM_BUILD)
+	$(IVERILOG) $(FLAGS) \
+		-s tb_cpu_program \
+		-Ptb_cpu_program.PROGRAM_FILE=\"$(PROGRAM)\" \
+		-Ptb_cpu_program.INITIAL_MEM=\"$(INITIAL_MEM)\" \
+		-Ptb_cpu_program.MAX_CYCLES=$(MAX_CYCLES) \
+		-o $(SIM_BUILD)/cpu_cache_program.vvp \
+		$^
+	$(VVP) $(SIM_BUILD)/cpu_cache_program.vvp
