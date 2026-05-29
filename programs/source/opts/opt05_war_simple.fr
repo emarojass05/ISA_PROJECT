@@ -1,13 +1,16 @@
 $ opt05_war_simple.fr
-$ WAR: "a" se lee, luego se reescribe con valor independiente.
-$ Renamer crea _rn0_a = nuevo_valor, permitiendo reordenar la
-$ escritura respecto a la lectura.
-$ Resultado esperado: b=15, a_nuevo=99, ret b = 15
+$ WAR multiple: a y b se leen para calcular c y d,
+$ luego se reescriben. El renamer permite reordenar las escrituras.
+$ a=4, b=6, c=a*b=24, d=a+b=10, a=c-d=14, b=c+d=34
+$ Resultado esperado: a + b = 14 + 34 = 48
 fonc [int] war_demo() {
-    [int] a = 5;
-    [int] b = a + 10;
-    a = 99;
-    ret b;
+    [int] a = 4;
+    [int] b = 6;
+    [int] c = a * b;
+    [int] d = a + b;
+    a = c - d;
+    b = c + d;
+    ret a + b;
 }
 
 fonc [int] main() {

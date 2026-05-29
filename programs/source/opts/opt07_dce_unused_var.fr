@@ -1,11 +1,16 @@
 $ opt07_dce_unused_var.fr
-$ DCE: variable "muerta" calculada pero nunca usada.
-$ El compilador con --O1 debe eliminar el calculo de "muerto".
+$ DCE: cadena de 3 variables muertas que dependen entre si.
+$ base y step son vivos (usados en live). dead1/dead2/dead3 son muertos.
+$ live = base + step = 4 + 3 = 7
 $ Resultado esperado: 7
 fonc [int] dce_demo() {
-    [int] util = 3 + 4;
-    [int] muerto = util * 100;
-    ret util;
+    [int] base = 4;
+    [int] step = 3;
+    [int] live = base + step;
+    [int] dead1 = base * base;
+    [int] dead2 = dead1 + step;
+    [int] dead3 = dead2 * live;
+    ret live;
 }
 
 fonc [int] main() {

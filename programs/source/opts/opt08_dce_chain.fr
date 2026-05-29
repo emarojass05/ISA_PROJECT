@@ -1,14 +1,17 @@
 $ opt08_dce_chain.fr
-$ DCE en cadena: una variable muerta que usa otras variables muertas.
-$ El compilador debe eliminar toda la cadena (a, b, c) y solo
-$ conservar "resultado".
-$ Resultado esperado: 5
+$ DCE: waste4 lee result (vivo) pero waste4 mismo es muerto.
+$ DCE debe eliminar waste1/waste2/waste3/waste4 aunque waste4 use result.
+$ n=6, m=4, result=10 (vivo), waste1..4 son muertos.
+$ Resultado esperado: 10
 fonc [int] dce_chain() {
-    [int] resultado = 5;
-    [int] a = resultado * 2;
-    [int] b = a + 1;
-    [int] c = b * b;
-    ret resultado;
+    [int] n = 6;
+    [int] m = n - 2;
+    [int] result = m + n;
+    [int] waste1 = n * n;
+    [int] waste2 = m * m;
+    [int] waste3 = waste1 + waste2;
+    [int] waste4 = waste3 * result;
+    ret result;
 }
 
 fonc [int] main() {
