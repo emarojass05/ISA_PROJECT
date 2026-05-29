@@ -32,24 +32,24 @@ DEFAULT_MAX_CYCLES = 2000
 
 EXPECTED: dict[str, int] = {
     # Loop unrolling
-    "opt01_unroll_sum":     10,   # 1+2+3+4 = 10
-    "opt02_unroll_product": 24,   # 1*2*3*4 = 24
-    "opt03_unroll_nested":  18,   # 6*3 = 18 (inner loop unrolled)
+    "opt01_unroll_sum":     100,  # 1^3+2^3+3^3+4^3 = 1+8+27+64 = 100
+    "opt02_unroll_product": 5,    # fibonacci 4 iters: a=0,b=1 -> b=5
+    "opt03_unroll_nested":  32,   # inner fila=8, outer n=4: 4*8=32
 
     # WAW/WAR renaming
-    "opt04_waw_simple":     30,   # x = 30; ret x + y - y
-    "opt05_war_simple":     15,   # b = a + 5 = 15; ret b
-    "opt06_waw_war_mixed":  42,   # final result = 42
+    "opt04_waw_simple":     21,   # x=2->x=6->y=7->x=10; x+y=10+11=21
+    "opt05_war_simple":     48,   # c=24,d=10,a=14,b=34; a+b=48
+    "opt06_waw_war_mixed":  34,   # p=3,q=5,r=15,p=17,q=2,r=34
 
     # Dead Code Elimination
-    "opt07_dce_unused_var": 7,    # useful = 3+4 = 7; dead var eliminated
-    "opt08_dce_chain":      5,    # result = 5; chain a,b,c eliminated
-    "opt09_dce_with_call":  1,    # ret 1; side-effect call still executes
+    "opt07_dce_unused_var": 7,    # live=base+step=4+3=7; dead1/2/3 eliminados
+    "opt08_dce_chain":      10,   # result=m+n=4+6=10; waste1..4 eliminados
+    "opt09_dce_with_call":  4,    # vivo=4; call helper se mantiene, muerto1/2/3 eliminados
 
-    # Scheduling (conditionals)
-    "opt10_cond_simple":    8,    # max(8, 3) = 8
-    "opt11_cond_nested":    1,    # clasifica(75) -> passed -> ret 1
-    "opt12_func_chain":     10,   # f3(2) = 10
+    # Scheduling (conditionals / function chains)
+    "opt10_cond_simple":    7,    # suma=8,prod=15; suma>prod? No -> prod-suma=7
+    "opt11_cond_nested":    24,   # a=3,b=4,c=5; s=12,p=12; s>10 y p>10 -> s+p=24
+    "opt12_func_chain":     32,   # cuadrado(3)=9,cuadrado(4)=16; sc=25; 25+3+4=32
 }
 
 LEVELS = [
