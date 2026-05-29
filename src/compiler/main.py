@@ -548,6 +548,22 @@ def main():
         help="Enable O2 optimizations: O1 + loop unrolling + instruction scheduling"
     )
 
+    parser.add_argument(
+        "--unroll-factor", type=int, default=0, metavar="N",
+        help=(
+            "Loop unroll factor for --O2 (default: 0 = heuristic). "
+            "0 = auto, 1 = disabled, 2+ = explicit factor. "
+            f"Full unrolling applies when trip count <= --unroll-max-full."
+        )
+    )
+    parser.add_argument(
+        "--unroll-max-full", type=int, default=16, metavar="N",
+        help=(
+            "Maximum trip count for full loop unrolling in --O2 (default: 16). "
+            "Set to 0 to disable full unrolling."
+        )
+    )
+
     args = parser.parse_args()
     source_file = args.source
 
@@ -602,7 +618,12 @@ def main():
                 opt_level = OptimizationLevel.O1
             if args.verbose:
                 print(f"[INFO] Phase 3c: Optimization ({opt_level.name})...")
-            opt_stats = optimize_program(ir_program, level=opt_level)
+            opt_stats = optimize_program(
+                ir_program,
+                level=opt_level,
+                unroll_factor=args.unroll_factor,
+                unroll_max_full=args.unroll_max_full,
+            )
             if args.verbose:
                 print(f"[OK] Optimization complete")
         # ─────────────────────────────────────────────────────────────────────

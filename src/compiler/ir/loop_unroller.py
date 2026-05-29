@@ -415,8 +415,8 @@ def unroll_function(ir_func: IRFunction,
 
 
 def unroll_program(ir_program: IRProgram,
-                   factor: int = 0,
-                   max_full: int = 6) -> UnrollStats:
+                   factor: int = DEFAULT_FACTOR,
+                   max_full: int = DEFAULT_MAX_FULL_UNROLL) -> UnrollStats:
     """Apply loop unrolling to all functions in the program."""
     total = UnrollStats()
     for func in ir_program.functions:
