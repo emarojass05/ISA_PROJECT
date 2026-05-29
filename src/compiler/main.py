@@ -366,6 +366,28 @@ def parse_file(file_path: str):
     return tree, parser
 
 
+def print_ir_with_blocks(ir_program):
+    """Print IR with visual basic-block boundaries derived from the CFG."""
+    SEP = "━" * 52
+    for ir_func in ir_program.functions:
+        params_str = ", ".join(ir_func.params)
+        print(f"\nfunction [{ir_func.return_type}] {ir_func.name}({params_str}):")
+        cfg = CFG.build_from_function(ir_func)
+        for block in cfg.blocks:
+            pred_ids = [f"B{p.id}" for p in block.predecessors]
+            succ_ids = [f"B{s.id}" for s in block.successors]
+            print(f"  {SEP}")
+            print(f"  ┌─ Block {block.id}   preds={pred_ids}  succs={succ_ids}")
+            for instr in block.instructions:
+                from src.compiler.ir.ir_types import IRLabel
+                if isinstance(instr, IRLabel):
+                    print(f"  │  {instr}:")
+                else:
+                    print(f"  │      {instr}")
+            print(f"  └{'─' * 51}")
+        print()
+
+
 def format_address(address):
     if address is None:
         return "-"
@@ -650,8 +672,8 @@ def main():
         print(opt_stats)
 
     if args.ir and ir_program is not None:
-        print("\n========== IR ==========")
-        print(ir_program)
+        print("\n========== IR (con bloques básicos) ==========")
+        print_ir_with_blocks(ir_program)
 
     if args.ir_save and ir_program is not None:
         output_dir = Path("build") / "bin"

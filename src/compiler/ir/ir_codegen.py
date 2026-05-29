@@ -141,6 +141,22 @@ class IRCodeGenerator:
         self._temp_regs = {}
         self._alloc_sregs(ir_func)
 
+        # Build a map: instruction index -> (block_id, preds, succs)
+        # Used to emit block-boundary comments in the ASM output.
+        cfg_for_comments = CFG.build_from_function(ir_func)
+        _block_start: Dict[int, tuple] = {}
+        _flat = ir_func.body
+        for block in cfg_for_comments.blocks:
+            # Find the index of the first instruction of this block in the flat body
+            if block.instructions:
+                first_instr = block.instructions[0]
+                for idx, instr in enumerate(_flat):
+                    if instr is first_instr:
+                        pred_ids = [f"B{p.id}" for p in block.predecessors]
+                        succ_ids = [f"B{s.id}" for s in block.successors]
+                        _block_start[idx] = (block.id, pred_ids, succ_ids)
+                        break
+
         # First IR instruction is often IRLabel("FUNC_name")
         body = ir_func.body
         start_idx = 0
@@ -164,8 +180,14 @@ class IRCodeGenerator:
             if psym and psym.get("is_local"):
                 self._emit(f"sw {_ARG_REGS[idx]}, {psym['address']}(sp)")
 
-        # Body
-        for instr in body[start_idx:]:
+        # Body — emit block-boundary comments whenever a new block starts
+        _SEP = "=" * 44
+        for idx, instr in enumerate(body[start_idx:], start=start_idx):
+            if idx in _block_start:
+                bid, preds, succs = _block_start[idx]
+                self._lines.append(f"    # {_SEP}")
+                self._lines.append(f"    # BLOCK {bid}   preds={preds}  succs={succs}")
+                self._lines.append(f"    # {_SEP}")
             self._gen_instr(instr)
 
         # Epilogue
