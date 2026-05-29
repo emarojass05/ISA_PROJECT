@@ -1,15 +1,16 @@
 $ opt06_waw_war_mixed.fr
-$ Mezcla WAW + WAR en la misma funcion.
-$ "res" se reescribe (WAW) y "tmp" se lee antes de reescribir (WAR).
-$ Resultado esperado: 42
+$ Mezcla WAW+WAR: p y q se leen para r, luego p y q se reescriben (WAR),
+$ luego r se reescribe usando los nuevos valores (WAW en r).
+$ p=3, q=5, r=p*q=15, p=r+2=17, q=p-r=2, r=p*q=34
+$ Resultado esperado: 34
 fonc [int] mixed_demo() {
-    [int] res = 0;
-    [int] tmp = 7;
-    [int] guardado = tmp;
-    tmp = 99;
-    res = 10;
-    res = guardado * 6;
-    ret res;
+    [int] p = 3;
+    [int] q = 5;
+    [int] r = p * q;
+    p = r + 2;
+    q = p - r;
+    r = p * q;
+    ret r;
 }
 
 fonc [int] main() {

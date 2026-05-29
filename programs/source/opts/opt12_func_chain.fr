@@ -1,21 +1,25 @@
 $ opt12_func_chain.fr
-$ Cadena de llamadas a funciones: f3 llama a f2, f2 llama a f1.
-$ Verifica que el pipeline no rompe el orden de calls ni los params.
-$ Resultado esperado: f1(2)=4, f2(2)=5, f3(2)=10
-fonc [int] f1([int] x) {
-    ret x + x;
+$ Cadena de 3 funciones con logica no trivial.
+$ cuadrado(x) = x*x
+$ suma_cuadrados(a,b) = a^2 + b^2
+$ resultado(a,b) = suma_cuadrados(a,b) + a + b
+$ resultado(3,4) = (9+16) + 3 + 4 = 32
+$ Resultado esperado: 32
+fonc [int] cuadrado([int] x) {
+    ret x * x;
 }
 
-fonc [int] f2([int] x) {
-    [int] base = f1(x);
-    ret base + 1;
+fonc [int] suma_cuadrados([int] a, [int] b) {
+    [int] ca = cuadrado(a);
+    [int] cb = cuadrado(b);
+    ret ca + cb;
 }
 
-fonc [int] f3([int] x) {
-    [int] parcial = f2(x);
-    ret parcial * 2;
+fonc [int] resultado([int] a, [int] b) {
+    [int] sc = suma_cuadrados(a, b);
+    ret sc + a + b;
 }
 
 fonc [int] main() {
-    ret f3(2);
+    ret resultado(3, 4);
 }

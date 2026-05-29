@@ -1,21 +1,24 @@
 $ opt11_cond_nested.fr
-$ Condicionales anidados + multiples variables locales.
-$ Demuestra que el scheduler opera bien dentro de ramas anidadas.
-$ Resultado esperado: clasificacion de 75: "aprobado" -> ret 1
-fonc [int] clasifica([int] nota) {
-    [int] resultado = 0;
-    si (nota >= 70) {
-        si (nota >= 90) {
-            resultado = 2;
+$ Condicionales anidados con 3 parametros y multiples temporales.
+$ a=3, b=4, c=5, s=12, p=12
+$ s>10? Si. p>10? Si. res = s+p = 24
+$ Resultado esperado: 24
+fonc [int] evaluar([int] a, [int] b, [int] c) {
+    [int] s = a + b + c;
+    [int] p = a * b;
+    [int] res = 0;
+    si (s > 10) {
+        si (p > 10) {
+            res = s + p;
         } sinon {
-            resultado = 1;
+            res = s - p;
         }
     } sinon {
-        resultado = 0;
+        res = p * c;
     }
-    ret resultado;
+    ret res;
 }
 
 fonc [int] main() {
-    ret clasifica(75);
+    ret evaluar(3, 4, 5);
 }
