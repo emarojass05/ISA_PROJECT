@@ -16,6 +16,17 @@ CYCLE_COUNT_FILE = SIM_DIR / "cycle_count.txt"
 DEFAULT_OUT      = BUILD_DIR / "metrics.csv"
 DEFAULT_MAX_CYCLES = 2000
 
+
+def _find_venv_python() -> str:
+    """Return the best available Python interpreter inside the venv."""
+    for name in ("python3.12", "python3.11", "python3.10", "python3", "python"):
+        p = PROJECT_ROOT / ".venv" / "bin" / name
+        if p.exists():
+            return str(p)
+    return sys.executable
+
+DEFAULT_PYTHON = _find_venv_python()
+
 CSV_FIELDS = [
     "program",
     "level",
@@ -60,8 +71,23 @@ def _parse_optimizer_block(text: str) -> dict:
     }
 
 
-def _add_code_bytes(row: dict) -> dict:
-    """Append code_bytes = instrs_after * 4 to a metrics row."""
+def _add_code_bytes(row: dict, hex_path: Path | None = None) -> dict:
+    """Append code_bytes = actual ASM instruction count * 4.
+
+    If hex_path is provided, count non-empty lines in the .hex file (each line
+    is one 32-bit instruction = 4 bytes).  This reflects the true binary size
+    rather than the IR instruction count, which can differ significantly since
+    one IR instruction may expand to several ASM instructions.
+    Falls back to instrs_after * 4 when the .hex is not available.
+    """
+    if hex_path is not None and hex_path.exists():
+        try:
+            lines = [l.strip() for l in hex_path.read_text().splitlines() if l.strip()]
+            row["code_bytes"] = len(lines) * 4
+            return row
+        except Exception:
+            pass
+    # Fallback: IR instruction count (less accurate but always available)
     after = row.get("instrs_after", 0)
     row["code_bytes"] = after * 4 if isinstance(after, int) else "ERROR"
     return row
@@ -164,14 +190,26 @@ def _run_level(
         start = output.find("========== OPTIMIZER")
         metrics = _parse_optimizer_block(output[start:])
 
-    # Optionally compile to hex and measure cycle count via CPU simulation
-    if hex_path is not None:
+    # Always compile to hex to get accurate code_bytes from the real binary.
+    # If hex_path is provided, also run the CPU simulation for cycle_count.
+    import tempfile, os
+    if hex_path is None:
+        # Compile to a temp file just to count bytes
+        tmp = tempfile.NamedTemporaryFile(suffix=".hex", delete=False)
+        tmp.close()
+        tmp_path = Path(tmp.name)
+        if _compile_to_hex(python_cmd, source, flag, tmp_path):
+            metrics["_hex_for_bytes"] = tmp_path
+        else:
+            metrics["_hex_for_bytes"] = None
+        metrics["cycle_count"] = ""
+    else:
         if _compile_to_hex(python_cmd, source, flag, hex_path):
             metrics["cycle_count"] = _run_simulation(hex_path, max_cycles)
+            metrics["_hex_for_bytes"] = hex_path
         else:
             metrics["cycle_count"] = "compile error"
-    else:
-        metrics["cycle_count"] = ""
+            metrics["_hex_for_bytes"] = None
 
     return metrics
 
@@ -187,8 +225,8 @@ def main() -> None:
         help="Output CSV path (default: build/metrics.csv)"
     )
     ap.add_argument(
-        "--python", default=".venv/bin/python3",
-        help="Python interpreter to use (default: .venv/bin/python3)"
+        "--python", default=DEFAULT_PYTHON,
+        help=f"Python interpreter to use (default: auto-detected venv: {DEFAULT_PYTHON})"
     )
     ap.add_argument(
         "--sim", action="store_true",
@@ -242,8 +280,15 @@ def main() -> None:
                     "program": prog.name, "level": level_name,
                 })
             else:
+                hex_for_bytes = result.pop("_hex_for_bytes", None)
                 row = {"program": prog.name, "level": level_name} | result
-                _add_code_bytes(row)
+                _add_code_bytes(row, hex_for_bytes)
+                # Clean up temp hex file if we created one just for byte counting
+                if hex_for_bytes and not args.sim:
+                    try:
+                        hex_for_bytes.unlink(missing_ok=True)
+                    except Exception:
+                        pass
                 rows.append(row)
                 cycles_str = f"  cycles={result['cycle_count']}" if args.sim else ""
                 print(

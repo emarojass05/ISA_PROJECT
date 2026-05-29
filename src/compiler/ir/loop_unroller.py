@@ -377,6 +377,11 @@ def unroll_function(ir_func: IRFunction,
     stats = UnrollStats()
     stats.instrs_before = len(ir_func.body)
 
+    # Track header labels already partially unrolled to avoid infinite loops.
+    # Full unrolling removes the loop entirely so it won't be seen again.
+    # Partial unrolling keeps the loop alive, so we must skip it next pass.
+    partial_done: set = set()
+
     # Repeat until no more loops to unroll (indices shift after each edit)
     changed = True
     while changed:
@@ -401,11 +406,15 @@ def unroll_function(ir_func: IRFunction,
                         changed = True
                         break   # restart search (indices changed)
 
-            # Partial unrolling
+            # Partial unrolling — skip loops already partially unrolled
+            if loop.header_label in partial_done:
+                continue
+
             f = factor if factor > 0 else _choose_factor(body_size)
             if f <= 1:
                 continue   # no useful unrolling
             ir_func.body = _apply_partial_unroll(ir_func.body, loop, f)
+            partial_done.add(loop.header_label)
             stats.loops_partial_unrolled += 1
             changed = True
             break   # restart search

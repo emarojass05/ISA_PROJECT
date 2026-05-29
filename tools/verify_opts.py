@@ -16,7 +16,15 @@ OPTS_DIR     = PROJECT_ROOT / "programs" / "source" / "opts"
 BIN_DIR      = PROJECT_ROOT / "build" / "bin"
 SIM_DIR      = PROJECT_ROOT / "build" / "sim"
 REG_DUMP     = SIM_DIR / "register_dump.txt"
-VENV_PY      = PROJECT_ROOT / ".venv" / "bin" / "python3.12"
+def _find_venv_python() -> Path:
+    """Return the best available Python interpreter inside the venv."""
+    for name in ("python3.12", "python3.11", "python3.10", "python3", "python"):
+        p = PROJECT_ROOT / ".venv" / "bin" / name
+        if p.exists():
+            return p
+    return Path(sys.executable)
+
+VENV_PY = _find_venv_python()
 
 # Return register: a0 = x3 (index 3 in the register file)
 RETURN_REG = 3
@@ -37,7 +45,7 @@ EXPECTED: dict[str, int] = {
     "opt03_unroll_nested":  32,   # inner fila=8, outer n=4: 4*8=32
 
     # WAW/WAR renaming
-    "opt04_waw_simple":     21,   # x=2->x=6->y=7->x=10; x+y=10+11=21
+    "opt04_waw_simple":     17,   # x=2->x=6->y=x+1=7->x=x+4=10; x+y=10+7=17
     "opt05_war_simple":     48,   # c=24,d=10,a=14,b=34; a+b=48
     "opt06_waw_war_mixed":  34,   # p=3,q=5,r=15,p=17,q=2,r=34
 
@@ -272,6 +280,15 @@ def main() -> None:
     print(f"  Programs  : {len(all_programs)}")
     print(f"  Levels    : {[l for l,_ in selected_levels]}")
     print(f"  Max cycles: {args.max_cycles}")
+    print("=" * 70)
+    print()
+
+    ok = run_verification(all_programs, selected_levels)
+    sys.exit(0 if ok else 1)
+
+
+if __name__ == "__main__":
+    main()
     print("=" * 70)
     print()
 

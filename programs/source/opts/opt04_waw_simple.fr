@@ -1,8 +1,8 @@
 $ opt04_waw_simple.fr
 $ WAW multiple: x se reescribe 3 veces, el renamer debe crear
 $ versiones independientes _rn0_x, _rn1_x permitiendo scheduling.
-$ x=2 -> x=x*3=6 -> x=x+4=10, y=x+1=11 (usa x=6 intermedio)
-$ Resultado esperado: x + y = 10 + 11 = 21
+$ x=2 -> x=x*3=6 -> y=x+1=7 (usa x=6) -> x=x+4=10 (usa x=6)
+$ Resultado esperado: x + y = 10 + 7 = 17
 fonc [int] waw_demo() {
     [int] x = 2;
     x = x * 3;

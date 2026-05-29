@@ -73,7 +73,8 @@ class IRBinOp(IRInstruction):
         return {self.dest}
 
     def uses(self) -> set[str]:
-        return {self.left, self.right}
+        # Filter out numeric literals — they are not variables
+        return {v for v in (self.left, self.right) if not _is_literal(v)}
 
     def rename(self, old: str, new: str) -> None:
         if self.dest  == old: self.dest  = new
@@ -351,6 +352,10 @@ class IRReturn(IRInstruction):
 def _is_literal(operand: str) -> bool:
     """Return True if operand is a numeric literal, not a variable name."""
     try:
+        int(operand, 0)
+        return True
+    except (ValueError, TypeError):
+        return False
         int(operand, 0)
         return True
     except (ValueError, TypeError):
