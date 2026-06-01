@@ -35,9 +35,41 @@
           "type": "number",
           "default": 800,
           "description": "ms to wait before re-validating the document after a change."
+        },
+        "frc.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python interpreter used to run the LL(1) completion script."
+        },
+        "frc.completionEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable LL(1) inline and QuickPick completions."
+        },
+        "frc.autoFix": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically apply unambiguous single-error fixes on save."
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "frc.triggerCompletion",
+        "title": "FRC: Trigger LL(1) Completion"
+      },
+      {
+        "command": "frc.applyFixes",
+        "title": "FRC: Apply All Auto-fixes"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "frc.triggerCompletion",
+        "key": "alt+space",
+        "when": "editorLangId == frc && editorTextFocus"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",
