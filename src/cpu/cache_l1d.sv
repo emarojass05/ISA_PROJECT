@@ -61,6 +61,7 @@ module cache_l1d #(
     output logic                 hit_way,
     output logic [31:0]          hit_rdata,
     output logic                 victim_dirty,
+    output logic                 victim_way,   // LRU way that would be evicted next
     output logic [XLEN-1:0]      victim_addr,
     output logic [LINE_BITS-1:0] victim_data,
 
@@ -122,16 +123,17 @@ module cache_l1d #(
     // The LRU bit tells us which way is the least recently used and should
     // be replaced on the next fill. If the victim is dirty, cache_ctrl must
     // write it back to L2 before overwriting it.
-    logic victim_way_sel;
-    assign victim_way_sel = lru[req_index];
+    // victim_way is exposed as an output so cache_ctrl can tell cache_l1d
+    // exactly which way to target on the subsequent do_fill.
+    assign victim_way = lru[req_index];
 
     // Use explicit ternary muxes here — Icarus Verilog does not support
     // using a logic signal as an unpacked array index inside assign.
-    assign victim_dirty = victim_way_sel ? dirty[1][req_index] : dirty[0][req_index];
-    assign victim_addr  = victim_way_sel
+    assign victim_dirty = victim_way ? dirty[1][req_index] : dirty[0][req_index];
+    assign victim_addr  = victim_way
         ? {tags[1][req_index], req_index, {OFFSET_BITS{1'b0}}}
         : {tags[0][req_index], req_index, {OFFSET_BITS{1'b0}}};
-    assign victim_data  = victim_way_sel ? data[1][req_index] : data[0][req_index];
+    assign victim_data  = victim_way ? data[1][req_index] : data[0][req_index];
 
     // -- Helper signals for registered operations -------------------------
     // Pre-decode address fields from fill_addr and write_addr so the
