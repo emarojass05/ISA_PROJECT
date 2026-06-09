@@ -87,12 +87,13 @@ function compute_fixes(
     const ln  = diag.range.start.line;
 
     if (/missing ';'|expecting ';'/.test(msg)) {
-      const col = document.lineAt(ln).text.trimEnd().length;
+      const target = Math.max(0, ln - 1);
+      const col = document.lineAt(target).text.trimEnd().length;
       fixes.push({
         diagnostic: diag,
         fix_kind:   'insert_semicolon',
-        edit:       { line: ln, col, text: ';' },
-        label:      `Insert ';' at line ${ln + 1}`,
+        edit:       { line: target, col, text: ';' },
+        label:      `Insert ';' at line ${target + 1}`,
       });
     }
 
@@ -108,7 +109,7 @@ function compute_fixes(
     }
 
     if (/missing '\)'/.test(msg)) {
-      const col = document.lineAt(ln).text.trimEnd().length;
+      const col = diag.range.start.character;
       fixes.push({
         diagnostic: diag,
         fix_kind:   'insert_rparen',
