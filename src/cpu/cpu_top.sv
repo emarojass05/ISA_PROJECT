@@ -4,8 +4,9 @@ module cpu_top #(
     parameter int XLEN        = 32,
     parameter int IMEM_DEPTH  = 65536,
     parameter int DMEM_DEPTH  = 65536,
-    parameter PROGRAM_FILE = "programs/hex/program.hex",
-    parameter INITIAL_MEM = ""
+    parameter int CACHE_ENABLE = 1,
+    parameter [1023:0] PROGRAM_FILE = "programs/hex/program.hex",
+    parameter [1023:0] INITIAL_MEM  = ""
 )(
     input  logic clk,
     input  logic rst
@@ -86,6 +87,10 @@ module cpu_top #(
     logic ex_C;
     logic ex_V;
 
+    logic cache_stall;
+    logic ch_mem_read;
+    assign ch_mem_read = (ex_mem_reg.wb_src == WB_MEM);
+
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             if_id_reg    <= '0;
@@ -93,6 +98,10 @@ module cpu_top #(
             ex_mem_reg   <= '0;
             mem_wb_reg   <= '0;
             id_ex_funct3 <= '0;
+
+        end else if (cache_stall) begin
+            mem_wb_reg <= '0;
+
         end else begin
 
             if (if_id_write) begin
@@ -159,6 +168,8 @@ module cpu_top #(
             mem_wb_reg.reg_write  <= ex_mem_reg.reg_write;
         end
     end
+
+    assign pc_next_stall = (pc_write && !cache_stall) ? if_pc_next : if_pc_cur;
 
     decoder #(
         .XLEN(XLEN)
@@ -288,8 +299,6 @@ module cpu_top #(
             if_pc_next = if_pc_plus4;
         end
     end
-
-    assign pc_next_stall = pc_write ? if_pc_next : if_pc_cur;
 
     pc #(
         .XLEN(XLEN)
@@ -438,16 +447,20 @@ module cpu_top #(
         end
     end
 
-    data_mem #(
-        .XLEN(XLEN),
-        .DEPTH(DMEM_DEPTH),
-        .INITIAL_MEM(INITIAL_MEM)
-    ) u_dmem (
+    cache_hierarchy #(
+        .XLEN           (XLEN),
+        .MEM_DEPTH      (DMEM_DEPTH),
+        .MEM_INIT_FILE  (INITIAL_MEM)
+    ) u_cache (
         .clk(clk),
-        .mem_write_enable(ex_mem_reg.mem_write),
-        .mem_write_data(ex_mem_reg.rs2_data),
-        .memory_address(ex_mem_reg.alu_result),
-        .mem_read_data(mem_rdata)
+        .rst(rst),
+        .cache_enable(CACHE_ENABLE != 0),
+        .mem_read    (ch_mem_read),
+        .mem_write   (ex_mem_reg.mem_write),
+        .addr        (ex_mem_reg.alu_result),
+        .write_data  (ex_mem_reg.rs2_data),
+        .read_data   (mem_rdata),
+        .cache_stall (cache_stall)
     );
 
     always @(*) begin
