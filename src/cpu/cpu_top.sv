@@ -5,8 +5,8 @@ module cpu_top #(
     parameter int IMEM_DEPTH  = 65536,
     parameter int DMEM_DEPTH  = 65536,
     parameter int CACHE_ENABLE = 1,
-    parameter PROGRAM_FILE = "programs/hex/program.hex",
-    parameter INITIAL_MEM = ""
+    parameter [1023:0] PROGRAM_FILE = "programs/hex/program.hex",
+    parameter [1023:0] INITIAL_MEM  = ""
 )(
     input  logic clk,
     input  logic rst
@@ -300,8 +300,6 @@ module cpu_top #(
         end
     end
 
-    assign pc_next_stall = pc_write ? if_pc_next : if_pc_cur;
-
     pc #(
         .XLEN(XLEN)
     ) u_pc (
@@ -456,7 +454,7 @@ module cpu_top #(
     ) u_cache (
         .clk(clk),
         .rst(rst),
-        .cache_enable(CACHE_ENABLE[0]),  // cast int parameter to 1-bit logic
+        .cache_enable(CACHE_ENABLE != 0),
         .mem_read    (ch_mem_read),
         .mem_write   (ex_mem_reg.mem_write),
         .addr        (ex_mem_reg.alu_result),

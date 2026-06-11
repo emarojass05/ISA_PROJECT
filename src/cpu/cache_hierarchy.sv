@@ -21,7 +21,7 @@ module cache_hierarchy #(
     parameter int    L2_SETS       = 128,                  // L2 sets (2^7)
     parameter int    MEM_DEPTH     = 16384,                // main_mem words (64 KB)
     parameter int    MEM_LATENCY   = 25,                   // DRAM lat. cycles
-    parameter string MEM_INIT_FILE = ""                    // optional init file
+    parameter [1023:0] MEM_INIT_FILE = ""                  // optional init file
 )(
     input  logic             clk,
     input  logic             rst,
@@ -98,8 +98,13 @@ module cache_hierarchy #(
     logic [31:0] bypass_mem [0:MEM_DEPTH-1];
 
     initial begin
+        integer i;
+
+        for (i = 0; i < MEM_DEPTH; i = i + 1)
+            bypass_mem[i] = 32'h0;
+
         if (MEM_INIT_FILE != "")
-        $readmemh(MEM_INIT_FILE, bypass_mem);
+            $readmemh(MEM_INIT_FILE, bypass_mem);
     end
 
     // word-aligned index: descartar los 2 LSB de byte address

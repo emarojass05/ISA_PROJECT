@@ -33,7 +33,7 @@ module main_mem_model #(
     parameter int    LINE_WORDS = 8,
     parameter int    LINE_BITS  = LINE_WORDS * 32,   // 256 bits per cache line
     parameter int    LATENCY    = 25,
-    parameter string INIT_FILE  = ""
+    parameter [1023:0] INIT_FILE = ""
 )(
     input  logic                  clk,
     input  logic                  rst,
