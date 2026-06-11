@@ -5,6 +5,7 @@ module tb_cpu_top;
     localparam int XLEN       = 32;
     localparam int IMEM_DEPTH = 64;
     localparam int DMEM_DEPTH = 64;
+    localparam int CACHE_ENABLE = 1;
 
     logic clk;
     logic rst;
@@ -14,7 +15,9 @@ module tb_cpu_top;
     cpu_top #(
         .XLEN(XLEN),
         .IMEM_DEPTH(IMEM_DEPTH),
-        .DMEM_DEPTH(DMEM_DEPTH)
+        .DMEM_DEPTH(DMEM_DEPTH),
+        .CACHE_ENABLE(CACHE_ENABLE),
+        .INITIAL_MEM("")
     ) dut (
         .clk(clk),
         .rst(rst)
