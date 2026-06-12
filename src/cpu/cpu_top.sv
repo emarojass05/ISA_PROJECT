@@ -169,7 +169,7 @@ module cpu_top #(
         end
     end
 
-    assign pc_next_stall = (pc_write && !cache_stall) ? if_pc_next : if_pc_cur;
+    assign pc_next_stall = pc_write ? if_pc_next : if_pc_cur;
 
     decoder #(
         .XLEN(XLEN)
@@ -267,6 +267,7 @@ module cpu_top #(
 
         .branch_taken(ex_branch_taken),
         .jump_taken(id_jump_taken),
+        .cache_stall(cache_stall),
 
         .pc_write(pc_write),
         .if_id_write(if_id_write),

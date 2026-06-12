@@ -188,6 +188,13 @@ module tb_cpu_program;
                          cycle_count,
                          dut.if_pc_cur);
 
+                // HALT is detected in IF; an in-flight MEM-stage load stalling on a
+                // cache miss would not complete its WB within DRAIN_CYCLES otherwise.
+                while (dut.cache_stall) begin
+                    @(posedge clk);
+                    #1;
+                end
+
                 for (drain_count = 0; drain_count < DRAIN_CYCLES; drain_count = drain_count + 1) begin
                     @(posedge clk);
                     #1;

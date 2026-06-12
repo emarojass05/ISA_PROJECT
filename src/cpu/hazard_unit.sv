@@ -13,6 +13,7 @@ module hazard_unit (
 
     input  logic       branch_taken,
     input  logic       jump_taken,
+    input  logic       cache_stall,
 
     output logic       pc_write,
     output logic       if_id_write,
@@ -48,7 +49,12 @@ module hazard_unit (
         if_id_flush = 1'b0;
         id_ex_flush = 1'b0;
 
-        if (raw_hazard) begin
+        if (cache_stall) begin
+            pc_write    = 1'b0;
+            if_id_write = 1'b0;
+            if_id_flush = 1'b0;
+            id_ex_flush = 1'b0;
+        end else if (raw_hazard) begin
             pc_write    = 1'b0;
             if_id_write = 1'b0;
             if_id_flush = 1'b0;
