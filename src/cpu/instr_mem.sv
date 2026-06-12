@@ -12,11 +12,16 @@ module instr_mem #(
     integer i;
 
     initial begin
+        string plus_prog_file;
         for (i = 0; i < DEPTH; i = i + 1) begin
             memory[i] = 32'h0000_0007;
         end
 
-        if (PROGRAM_FILE != "") begin
+        // +PROGRAM_FILE= at vvp runtime takes precedence over the module parameter
+        if ($value$plusargs("PROGRAM_FILE=%s", plus_prog_file)) begin
+            $display("Loading instruction memory from: %s", plus_prog_file);
+            $readmemh(plus_prog_file, memory);
+        end else if (PROGRAM_FILE != "") begin
             $display("Loading instruction memory from: %s", PROGRAM_FILE);
             $readmemh(PROGRAM_FILE, memory);
         end

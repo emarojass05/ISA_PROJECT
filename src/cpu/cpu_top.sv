@@ -95,6 +95,20 @@ module cpu_top #(
     logic ch_mem_read;
     assign ch_mem_read = (ex_mem_reg.wb_src == WB_MEM);
 
+    // ── Performance counters ─────────────────────────────────────────────
+    // Cache-hierarchy counters (wired from u_cache outputs)
+    logic [31:0] perf_l1_accesses;
+    logic [31:0] perf_l1_hits;
+    logic [31:0] perf_l1_misses;
+    logic [31:0] perf_l2_hits;
+    logic [31:0] perf_l2_misses;
+    logic [31:0] perf_mm_accesses;
+    logic [31:0] perf_cache_stall_cycles;
+
+    // Pipeline-level counters (computed here)
+    logic [31:0] perf_instr_retired;    // instructions that passed IF→ID without flush
+    logic [31:0] perf_ctrl_stall_cycles; // wasted slots due to branches/jumps
+
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             if_id_reg    <= '0;
@@ -468,8 +482,15 @@ module cpu_top #(
         .mem_write   (ex_mem_reg.mem_write),
         .addr        (ex_mem_reg.alu_result),
         .write_data  (ex_mem_reg.rs2_data),
-        .read_data   (mem_rdata),
-        .cache_stall (cache_stall)
+        .read_data         (mem_rdata),
+        .cache_stall       (cache_stall),
+        .perf_l1_accesses  (perf_l1_accesses),
+        .perf_l1_hits      (perf_l1_hits),
+        .perf_l1_misses    (perf_l1_misses),
+        .perf_l2_hits      (perf_l2_hits),
+        .perf_l2_misses    (perf_l2_misses),
+        .perf_mm_accesses  (perf_mm_accesses),
+        .perf_stall_cycles (perf_cache_stall_cycles)
     );
 
     always @(*) begin
@@ -480,6 +501,27 @@ module cpu_top #(
             WB_SEC:  wb_data = mem_wb_reg.sec_result;
             default: wb_data = '0;
         endcase
+    end
+
+    // ── Pipeline performance counters ────────────────────────────────────
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            perf_instr_retired    <= '0;
+            perf_ctrl_stall_cycles <= '0;
+        end else begin
+            // Instruction retired: every cycle a real instruction advances IF→ID
+            // (not frozen by cache_stall, not squashed by a flush)
+            if (if_id_write && !if_id_flush && !cache_stall)
+                perf_instr_retired <= perf_instr_retired + 1;
+
+            // Control hazard wasted slots:
+            //   taken branch flushes 2 stages (IF/ID + ID/EX)
+            //   taken jump   flushes 1 stage  (IF/ID only)
+            if (ex_branch_taken && !cache_stall)
+                perf_ctrl_stall_cycles <= perf_ctrl_stall_cycles + 2;
+            else if (id_jump_taken && !cache_stall)
+                perf_ctrl_stall_cycles <= perf_ctrl_stall_cycles + 1;
+        end
     end
 
 endmodule

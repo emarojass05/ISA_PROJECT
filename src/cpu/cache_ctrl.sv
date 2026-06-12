@@ -25,7 +25,7 @@
 //
 // Cycle costs (approximate, cache_enable = 1):
 //   L1 hit         :  0 extra cycles  (resolved in IDLE)
-//   L2 hit         :  2 extra cycles  (L2_LOOKUP + L1_FILL)
+//   L2 hit         :  8 extra cycles  (L2_LOOKUP + L2_WAIT×5 + L1_FILL) — matches spec
 //   Main-mem fetch :  ≥29 extra cycles (L2_LOOKUP + MEM_FETCH×25 + L2_FILL + L1_FILL)
 //   Each dirty eviction adds another 25-cycle main-memory write.
 //
@@ -108,7 +108,16 @@ module cache_ctrl #(
     output logic [XLEN-1:0]       mm_addr,
     output logic [LINE_BITS-1:0]  mm_wdata,
     input  logic                  mm_ready,
-    input  logic [LINE_BITS-1:0]  mm_rdata
+    input  logic [LINE_BITS-1:0]  mm_rdata,
+
+    // ── Performance counters (only active when cache_enable = 1) ─────────
+    output logic [31:0]           perf_l1_accesses,   // total L1 requests
+    output logic [31:0]           perf_l1_hits,        // L1 hits
+    output logic [31:0]           perf_l1_misses,      // L1 misses
+    output logic [31:0]           perf_l2_hits,        // L2 hits (on L1 miss)
+    output logic [31:0]           perf_l2_misses,      // L2 misses → main memory
+    output logic [31:0]           perf_mm_accesses,    // main memory fetches
+    output logic [31:0]           perf_stall_cycles    // total cache stall cycles
 );
 
     // ── Address field constants ──────────────────────────────────────────
@@ -125,6 +134,7 @@ module cache_ctrl #(
         IDLE,
         L1_WRITEBACK,  // write dirty L1 victim line into L2
         L2_LOOKUP,     // check whether the missed line is in L2
+        L2_WAIT,       // stall 5 extra cycles to match 8-cycle L2 hit time spec
         L2_WRITEBACK,  // write dirty L2 victim line to main memory
         MEM_FETCH,     // fetch the missed line from main memory
         L2_FILL,       // install fetched line into L2
@@ -157,24 +167,54 @@ module cache_ctrl #(
     // mm_req_sent goes high after we fire the pulse so we don't fire again.
     logic mm_req_sent;
 
+    // ── L2 wait counter ───────────────────────────────────────────────────
+    // Counts 5 extra cycles in L2_WAIT to reach the 8-cycle L2 hit time spec
+    // (1 IDLE miss + 1 L2_LOOKUP + 5 L2_WAIT + 1 L1_FILL = 8 stall cycles).
+    logic [2:0] l2_wait_count;
+
+    // ── Performance counter registers ────────────────────────────────────
+    logic [31:0] perf_l1_accesses_r;
+    logic [31:0] perf_l1_hits_r;
+    logic [31:0] perf_l1_misses_r;
+    logic [31:0] perf_l2_hits_r;
+    logic [31:0] perf_l2_misses_r;
+    logic [31:0] perf_mm_accesses_r;
+    logic [31:0] perf_stall_cycles_r;
+
+    assign perf_l1_accesses  = perf_l1_accesses_r;
+    assign perf_l1_hits      = perf_l1_hits_r;
+    assign perf_l1_misses    = perf_l1_misses_r;
+    assign perf_l2_hits      = perf_l2_hits_r;
+    assign perf_l2_misses    = perf_l2_misses_r;
+    assign perf_mm_accesses  = perf_mm_accesses_r;
+    assign perf_stall_cycles = perf_stall_cycles_r;
+
     // ── Registered state transitions and latching ────────────────────────
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
-            state           <= IDLE;
-            lat_addr        <= '0;
-            lat_line_addr   <= '0;
-            lat_wdata       <= '0;
-            lat_mem_read    <= 1'b0;
-            lat_mem_write   <= 1'b0;
-            lat_l1_vway     <= 1'b0;
-            lat_l1_vaddr    <= '0;
-            lat_l1_vdata    <= '0;
-            lat_l2_vaddr    <= '0;
-            lat_l2_vdata    <= '0;
-            lat_fill_line   <= '0;
-            lat_from_l2_hit <= 1'b0;
-            lat_l2_hit_way  <= '0;
-            mm_req_sent     <= 1'b0;
+            state              <= IDLE;
+            lat_addr           <= '0;
+            lat_line_addr      <= '0;
+            lat_wdata          <= '0;
+            lat_mem_read       <= 1'b0;
+            lat_mem_write      <= 1'b0;
+            lat_l1_vway        <= 1'b0;
+            lat_l1_vaddr       <= '0;
+            lat_l1_vdata       <= '0;
+            lat_l2_vaddr       <= '0;
+            lat_l2_vdata       <= '0;
+            lat_fill_line      <= '0;
+            lat_from_l2_hit    <= 1'b0;
+            lat_l2_hit_way     <= '0;
+            mm_req_sent        <= 1'b0;
+            l2_wait_count      <= '0;
+            perf_l1_accesses_r <= '0;
+            perf_l1_hits_r     <= '0;
+            perf_l1_misses_r   <= '0;
+            perf_l2_hits_r     <= '0;
+            perf_l2_misses_r   <= '0;
+            perf_mm_accesses_r <= '0;
+            perf_stall_cycles_r<= '0;
         end else begin
 
             case (state)
@@ -219,7 +259,8 @@ module cache_ctrl #(
                         lat_fill_line   <= l2_hit_rdata_line;
                         lat_from_l2_hit <= 1'b1;
                         lat_l2_hit_way  <= l2_hit_way;
-                        state           <= L1_FILL;
+                        l2_wait_count   <= '0;
+                        state           <= L2_WAIT;
                     end else begin
                         lat_l2_vaddr    <= l2_victim_addr;
                         lat_l2_vdata    <= l2_victim_data;
@@ -229,6 +270,16 @@ module cache_ctrl #(
                         else
                             state <= MEM_FETCH;
                     end
+                end
+
+                // ── L2_WAIT ──────────────────────────────────────────────
+                // Hold for 5 cycles to meet the 8-cycle L2 hit time from spec.
+                // (1 IDLE + 1 L2_LOOKUP + 5 L2_WAIT + 1 L1_FILL = 8 stalls)
+                L2_WAIT: begin
+                    if (l2_wait_count == 3'd4)
+                        state <= L1_FILL;
+                    else
+                        l2_wait_count <= l2_wait_count + 1;
                 end
 
                 // ── L2_WRITEBACK ──────────────────────────────────────────
@@ -273,6 +324,32 @@ module cache_ctrl #(
 
                 default: state <= IDLE;
             endcase
+
+            // ── Performance counter increments ───────────────────────────
+            // L1 access/hit/miss: one event per memory request arriving in IDLE
+            if (cache_enable && (mem_read || mem_write) && state == IDLE) begin
+                perf_l1_accesses_r <= perf_l1_accesses_r + 1;
+                if (l1_hit)
+                    perf_l1_hits_r <= perf_l1_hits_r + 1;
+                else
+                    perf_l1_misses_r <= perf_l1_misses_r + 1;
+            end
+
+            // L2 hit/miss: one event per L2_LOOKUP cycle
+            if (state == L2_LOOKUP) begin
+                if (l2_hit)
+                    perf_l2_hits_r <= perf_l2_hits_r + 1;
+                else
+                    perf_l2_misses_r <= perf_l2_misses_r + 1;
+            end
+
+            // Main memory fetch: first cycle of MEM_FETCH (when mm_req fires)
+            if (state == MEM_FETCH && !mm_req_sent)
+                perf_mm_accesses_r <= perf_mm_accesses_r + 1;
+
+            // Stall cycles: every cycle cache_stall is asserted
+            if (cache_enable && ((state != IDLE) || ((mem_read || mem_write) && !l1_hit)))
+                perf_stall_cycles_r <= perf_stall_cycles_r + 1;
         end
     end
 

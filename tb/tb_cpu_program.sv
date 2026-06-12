@@ -14,9 +14,10 @@ module tb_cpu_program;
     parameter int MAX_CYCLES   = 200;
     parameter int DRAIN_CYCLES = 10;
 
-    parameter [1023:0] REGISTER_DUMP_FILE = "build/sim/register_dump.txt";
-    parameter [1023:0] MEMORY_DUMP_FILE   = "build/sim/memory_dump.txt";
-    parameter [1023:0] CYCLE_COUNT_FILE   = "build/sim/cycle_count.txt";
+    parameter string REGISTER_DUMP_FILE = "build/sim/register_dump.txt";
+    parameter string MEMORY_DUMP_FILE   = "build/sim/memory_dump.txt";
+    parameter string CYCLE_COUNT_FILE   = "build/sim/cycle_count.txt";
+    parameter string METRICS_FILE       = "build/sim/metrics.txt";
 
     // j offset=0, opcode=0x07
     localparam logic [31:0] HALT_INSTR = 32'h00000007;
@@ -113,15 +114,90 @@ module tb_cpu_program;
         end
     endtask
 
+    task automatic dump_metrics;
+        input integer cycles;
+        integer file;
+        real ipc;
+        real l1_hit_rate;
+        real l2_hit_rate;
+        real mm_bytes;
+        real bw_bytes_per_cycle;
+        begin
+            file = $fopen(METRICS_FILE, "w");
+
+            if (file == 0) begin
+                $display("[ERR] Could not open metrics file: %0s", METRICS_FILE);
+            end else begin
+                ipc = (cycles > 0) ?
+                      ($itor(dut.perf_instr_retired) / $itor(cycles)) : 0.0;
+
+                l1_hit_rate = (dut.perf_l1_accesses > 0) ?
+                              ($itor(dut.perf_l1_hits) / $itor(dut.perf_l1_accesses) * 100.0) : 0.0;
+
+                l2_hit_rate = ((dut.perf_l2_hits + dut.perf_l2_misses) > 0) ?
+                              ($itor(dut.perf_l2_hits) /
+                               $itor(dut.perf_l2_hits + dut.perf_l2_misses) * 100.0) : 0.0;
+
+                // Each main-memory fetch transfers one 256-bit (32-byte) cache line.
+                mm_bytes           = $itor(dut.perf_mm_accesses) * 32.0;
+                bw_bytes_per_cycle = (cycles > 0) ? (mm_bytes / $itor(cycles)) : 0.0;
+
+                $fdisplay(file, "PERFORMANCE METRICS");
+                $fdisplay(file, "===================");
+                $fdisplay(file, "");
+                $fdisplay(file, "Cycles total         : %0d", cycles);
+                $fdisplay(file, "Instructions retired : %0d", dut.perf_instr_retired);
+                $fdisplay(file, "IPC                  : %.4f", ipc);
+                $fdisplay(file, "");
+                $fdisplay(file, "Cache stall cycles   : %0d", dut.perf_cache_stall_cycles);
+                $fdisplay(file, "Control stall slots  : %0d", dut.perf_ctrl_stall_cycles);
+                $fdisplay(file, "");
+                $fdisplay(file, "L1 accesses          : %0d", dut.perf_l1_accesses);
+                $fdisplay(file, "L1 hits              : %0d", dut.perf_l1_hits);
+                $fdisplay(file, "L1 misses            : %0d", dut.perf_l1_misses);
+                $fdisplay(file, "L1 hit rate          : %.2f%%", l1_hit_rate);
+                $fdisplay(file, "");
+                $fdisplay(file, "L2 hits              : %0d", dut.perf_l2_hits);
+                $fdisplay(file, "L2 misses            : %0d", dut.perf_l2_misses);
+                $fdisplay(file, "L2 hit rate          : %.2f%%", l2_hit_rate);
+                $fdisplay(file, "");
+                $fdisplay(file, "Main memory fetches  : %0d", dut.perf_mm_accesses);
+                $fdisplay(file, "MM bytes transferred : %.0f B", mm_bytes);
+                $fdisplay(file, "BW utilization       : %.4f B/cycle", bw_bytes_per_cycle);
+
+                $fclose(file);
+                $display("[OK] Metrics written to %0s", METRICS_FILE);
+
+                $display("");
+                $display("========= PERFORMANCE SUMMARY =========");
+                $display("  Cycles total         : %0d", cycles);
+                $display("  Instructions retired : %0d", dut.perf_instr_retired);
+                $display("  IPC                  : %.4f", ipc);
+                $display("---------------------------------------");
+                $display("  Cache stall cycles   : %0d", dut.perf_cache_stall_cycles);
+                $display("  Control stall slots  : %0d", dut.perf_ctrl_stall_cycles);
+                $display("---------------------------------------");
+                $display("  L1 accesses          : %0d", dut.perf_l1_accesses);
+                $display("  L1 hit rate          : %.2f%%", l1_hit_rate);
+                $display("  L1 misses -> L2      : %0d", dut.perf_l1_misses);
+                $display("  L2 hit rate          : %.2f%%", l2_hit_rate);
+                $display("  Main memory fetches  : %0d", dut.perf_mm_accesses);
+                $display("  BW utilization       : %.4f B/cycle", bw_bytes_per_cycle);
+                $display("=======================================");
+            end
+        end
+    endtask
+
     task automatic dump_and_finish;
         input [8*80-1:0] reason;
         input integer cycles;
         begin
             $display("");
             $display("[STOP] %0s", reason);
-            $display("[INFO] Dumping register file and data memory...");
+            $display("[INFO] Dumping register file, data memory and metrics...");
 
             dump_cycle_count(cycles);
+            dump_metrics(cycles);
             dump_register_file();
             dump_data_memory();
 
