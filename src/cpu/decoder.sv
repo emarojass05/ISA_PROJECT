@@ -27,7 +27,6 @@ module decoder #(
         funct7 = instr[31:25];
     end
 
-    // Inmediate extension
     always @(*) begin
         imm = '0;
 

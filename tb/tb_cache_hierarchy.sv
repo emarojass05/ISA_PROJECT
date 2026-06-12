@@ -8,11 +8,11 @@
 // Test cases
 // ──────────
 //  TC-1  Bypass mode   (cache_enable=0): write then read-back
-//  TC-2  Cold miss:    write + read through L1-miss → L2-miss → DRAM
+//  TC-2  Cold miss:    write + read through L1-miss -> L2-miss -> DRAM
 //  TC-3  Hit after fill: second read to the same line
 //  TC-4  Multiple sets: stress 8 distinct L1 sets (stride 256 B)
 //  TC-5  Write overwrite (write-hit): latest value must survive
-//  TC-6  cache_enable toggle 1→0→1: cached state must persist
+//  TC-6  cache_enable toggle 1->0->1: cached state must persist
 //  TC-7  Reset: cache_stall must be 0 with no pending request
 // =============================================================================
 
@@ -31,7 +31,7 @@ module tb_cache_hierarchy;
     localparam MEM_DEPTH   = 16384;
     localparam MEM_LATENCY = 25;
 
-    localparam CLK_HALF   = 5;             // half-period in ns  → 100 MHz
+    localparam CLK_HALF   = 5;             // half-period in ns (100 MHz)
     localparam CLK_PERIOD = CLK_HALF * 2;
     localparam RST_CYCLES = 6;
 
@@ -270,7 +270,6 @@ module tb_cache_hierarchy;
         check_val("TC-1b bypass write->read addr=0x0020",
                   ok_w & ok_r, cap_rdata, 32'hCAFE_F00D);
 
-        // Verify address isolation: re-reading 0x10 must still return original data
         do_read(32'h0000_0010, cap_rdata, ok_r);
         check_val("TC-1c bypass re-read addr=0x0010 (isolation)",
                   ok_r, cap_rdata, 32'hDEAD_BEEF);
@@ -278,7 +277,6 @@ module tb_cache_hierarchy;
         idle(2);
 
         // ── TC-2  Cache enabled — cold miss ───────────────────────────────────
-        // Path: L1 miss → L2 miss → DRAM fetch (MEM_LATENCY cycles) → fill L2 + L1
         $display("\n-- TC-2  Cache enabled — cold miss --");
         cache_enable = 1'b1;
 
@@ -292,7 +290,6 @@ module tb_cache_hierarchy;
         idle(2);
 
         // ── TC-3  Cache hit after fill ────────────────────────────────────────
-        // First access fills the line; second access must find it resident in L1.
         $display("\n-- TC-3  Cache hit after fill --");
         cache_enable = 1'b1;
 
@@ -325,7 +322,6 @@ module tb_cache_hierarchy;
         idle(2);
 
         // ── TC-5  Write overwrite (write-hit) ─────────────────────────────────
-        // Two consecutive writes to the same address; read must return the second.
         $display("\n-- TC-5  Write overwrite (write-hit) --");
         cache_enable = 1'b1;
 
@@ -341,8 +337,7 @@ module tb_cache_hierarchy;
 
         idle(2);
 
-        // ── TC-6  cache_enable toggle 1 → 0 → 1 ──────────────────────────────
-        // A bypass-mode interlude must not disturb the L1/L2 arrays.
+        // ── TC-6  cache_enable toggle 1 -> 0 -> 1 ────────────────────────────
         $display("\n-- TC-6  cache_enable 1->0->1 (cache state persists) --");
         cache_enable = 1'b1;
 
@@ -353,12 +348,10 @@ module tb_cache_hierarchy;
         check_val("TC-6b cache initial read addr=0x0400",
                   ok, cap_rdata, 32'hFACE_CAFE);
 
-        // Bypass an unrelated address — must not affect the cached line at 0x400
         cache_enable = 1'b0;
         do_write(32'h0000_0008, 32'hDEAD_C0DE, ok);
         check_op("TC-6c bypass write (unrelated) addr=0x0008", ok);
 
-        // Restore cache mode; 0x400 should still be resident
         cache_enable = 1'b1;
         do_read(32'h0000_0400, cap_rdata, ok);
         check_val("TC-6d cache re-read after bypass addr=0x0400",

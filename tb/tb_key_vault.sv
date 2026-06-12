@@ -72,27 +72,27 @@ module tb_key_vault;
 
         @(posedge clk);
 
-        // ---------- TEST 1: estado inicial (todo en 0) ----------
+        // ---------- TEST 1: initial state (all zeros) ----------
         check_read("initial state addr=0 (auth on)",   1'b1, 4'h0, 32'h0);
         check_read("initial state addr=15 (auth on)",  1'b1, 4'hF, 32'h0);
 
-        // ---------- TEST 2: lectura sin auth devuelve 0 ----------
+        // ---------- TEST 2: read without auth returns 0 ----------
         check_read("read with auth_en=0",              1'b0, 4'h0, 32'h0);
 
-        // ---------- TEST 3: write sin auth NO debe escribir ----------
+        // ---------- TEST 3: write without auth must not write ----------
         auth_en = 1'b0;
         write_word(4'h0, 32'hDEADBEEF);
         check_read("write blocked when auth_en=0",     1'b1, 4'h0, 32'h0);
 
-        // ---------- TEST 4: write con auth, read con auth ----------
+        // ---------- TEST 4: write with auth, read with auth ----------
         auth_en = 1'b1;
         write_word(4'h0, 32'hAAAA1111);
         check_read("write/read addr=0 auth=1",         1'b1, 4'h0, 32'hAAAA1111);
 
-        // ---------- TEST 5: leer la misma celda sin auth da 0 ----------
+        // ---------- TEST 5: read same cell without auth returns 0 ----------
         check_read("locked read after authorized write", 1'b0, 4'h0, 32'h0);
 
-        // ---------- TEST 6: escribir las 4 llaves x 4 words ----------
+        // ---------- TEST 6: write all 4 keys x 4 words ----------
         auth_en = 1'b1;
         write_word(4'h1, 32'h11111111);
         write_word(4'h2, 32'h22222222);
@@ -110,7 +110,7 @@ module tb_key_vault;
         check_read("read addr=12 (key3 word0)",         1'b1, 4'hC, 32'hCCCCCCCC);
         check_read("read addr=15 (last word)",          1'b1, 4'hF, 32'hFFFFFFFF);
 
-        // ---------- TEST 7: lockdown - des-autenticarse y verificar bloqueo ----------
+        // ---------- TEST 7: lockdown - deauthenticate and verify access block ----------
         check_read("lockdown after unauth: addr=1",     1'b0, 4'h1, 32'h0);
         check_read("lockdown after unauth: addr=15",    1'b0, 4'hF, 32'h0);
 

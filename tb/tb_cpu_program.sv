@@ -1,4 +1,5 @@
 `timescale 1ns/1ps
+import isa_defs::*;
 
 module tb_cpu_program;
 
@@ -65,38 +66,18 @@ module tb_cpu_program;
                 $fdisplay(file, "==================");
                 $fdisplay(file, "");
 
-                dump_register_line(file,  0, 32'h00000000);
-                dump_register_line(file,  1, dut.u_rf.registers[1]);
-                dump_register_line(file,  2, dut.u_rf.registers[2]);
-                dump_register_line(file,  3, dut.u_rf.registers[3]);
-                dump_register_line(file,  4, dut.u_rf.registers[4]);
-                dump_register_line(file,  5, dut.u_rf.registers[5]);
-                dump_register_line(file,  6, dut.u_rf.registers[6]);
-                dump_register_line(file,  7, dut.u_rf.registers[7]);
-                dump_register_line(file,  8, dut.u_rf.registers[8]);
-                dump_register_line(file,  9, dut.u_rf.registers[9]);
-                dump_register_line(file, 10, dut.u_rf.registers[10]);
-                dump_register_line(file, 11, dut.u_rf.registers[11]);
-                dump_register_line(file, 12, dut.u_rf.registers[12]);
-                dump_register_line(file, 13, dut.u_rf.registers[13]);
-                dump_register_line(file, 14, dut.u_rf.registers[14]);
-                dump_register_line(file, 15, dut.u_rf.registers[15]);
-                dump_register_line(file, 16, dut.u_rf.registers[16]);
-                dump_register_line(file, 17, dut.u_rf.registers[17]);
-                dump_register_line(file, 18, dut.u_rf.registers[18]);
-                dump_register_line(file, 19, dut.u_rf.registers[19]);
-                dump_register_line(file, 20, dut.u_rf.registers[20]);
-                dump_register_line(file, 21, dut.u_rf.registers[21]);
-                dump_register_line(file, 22, dut.u_rf.registers[22]);
-                dump_register_line(file, 23, dut.u_rf.registers[23]);
-                dump_register_line(file, 24, dut.u_rf.registers[24]);
-                dump_register_line(file, 25, dut.u_rf.registers[25]);
-                dump_register_line(file, 26, dut.u_rf.registers[26]);
-                dump_register_line(file, 27, dut.u_rf.registers[27]);
-                dump_register_line(file, 28, dut.u_rf.registers[28]);
-                dump_register_line(file, 29, dut.u_rf.registers[29]);
-                dump_register_line(file, 30, 32'h9E3779B9);
-                dump_register_line(file, 31, dut.u_rf.registers[31]);
+                begin : dump_loop
+                    integer ri;
+                    for (ri = 0; ri < 32; ri = ri + 1) begin
+                        if (ri == 0)
+                            dump_register_line(file, ri, 32'h0);
+                        else if (ri == 30)
+                            // x30 (R_DELTA) is hardwired — reads return DELTA_CONSTANT
+                            dump_register_line(file, ri, DELTA_CONSTANT);
+                        else
+                            dump_register_line(file, ri, dut.u_rf.registers[ri]);
+                    end
+                end
 
                 $fclose(file);
                 $display("[OK] Register dump written to %0s", REGISTER_DUMP_FILE);
@@ -181,8 +162,7 @@ module tb_cpu_program;
                 dut.cache_stall
             );
 
-            // Detecta PROGRAM_END cuando aparece j 0x0.
-            // Se usa cycle_count > 10 para evitar falso positivo durante el llenado del pipeline.
+            // cycle_count > 10 avoids a false positive while the pipeline is filling
             if (dut.if_instr == HALT_INSTR && cycle_count > 10) begin
                 $display("[HALT] PROGRAM_END detected at cycle %0d (pc=%08h)",
                          cycle_count,

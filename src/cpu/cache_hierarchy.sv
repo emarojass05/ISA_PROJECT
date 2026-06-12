@@ -27,7 +27,7 @@ module cache_hierarchy #(
     input  logic             rst,
 
     // Pipeline Interface - MEM stage
-    input  logic             cache_enable,   // 0 = bypass, 1 = jerarquía activa
+    input  logic             cache_enable,   // 0 = bypass, 1 = hierarchy active
     input  logic             mem_read,       // read req  (stage MEM)
     input  logic             mem_write,      // write req (stage MEM)
     input  logic [XLEN-1:0] addr,            // byte addr (stage MEM)
@@ -93,7 +93,7 @@ module cache_hierarchy #(
     // =========================================================================
     // Bypass SRAM (cache_enable = 0)
     // =========================================================================
-    localparam int DM_AW = $clog2(MEM_DEPTH);  // bits de índice en bypass_mem
+    localparam int DM_AW = $clog2(MEM_DEPTH);  // index bits into bypass_mem
 
     logic [31:0] bypass_mem [0:MEM_DEPTH-1];
 
@@ -107,7 +107,7 @@ module cache_hierarchy #(
             $readmemh(MEM_INIT_FILE, bypass_mem);
     end
 
-    // word-aligned index: descartar los 2 LSB de byte address
+    // word-aligned index: drop the 2 LSBs of the byte address
     logic [DM_AW-1:0] dm_word_idx;
     assign dm_word_idx = dm_addr[DM_AW+1:2];
 

@@ -84,9 +84,10 @@ module cache_l1d #(
 );
 
     // -- Address field widths ---------------------------------------------
-    localparam int OFFSET_BITS = $clog2(LINE_WORDS) + 2;          // 5 bits
-    localparam int INDEX_BITS  = $clog2(SETS);                     // 6 bits
-    localparam int TAG_BITS    = XLEN - INDEX_BITS - OFFSET_BITS;  // 21 bits
+    localparam int BYTE_ALIGN_BITS = 2;
+    localparam int OFFSET_BITS     = $clog2(LINE_WORDS) + BYTE_ALIGN_BITS;  // 5 bits
+    localparam int INDEX_BITS      = $clog2(SETS);                           // 6 bits
+    localparam int TAG_BITS        = XLEN - INDEX_BITS - OFFSET_BITS;        // 21 bits
 
     // -- Storage arrays ---------------------------------------------------
     // Each entry is indexed as [way][set].
