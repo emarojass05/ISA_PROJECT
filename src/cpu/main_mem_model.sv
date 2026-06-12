@@ -53,10 +53,14 @@ module main_mem_model #(
 
     initial begin
         integer i;
+        string plus_init_file;
         for (i = 0; i < DEPTH; i++)
             memory[i] = 32'h0;
-        if (INIT_FILE != "")
+        if ($value$plusargs("INITIAL_MEM=%s", plus_init_file) && plus_init_file != "") begin
+            $readmemh(plus_init_file, memory);
+        end else if (INIT_FILE != "") begin
             $readmemh(INIT_FILE, memory);
+        end
     end
 
     // -- Transaction state ------------------------------------------------

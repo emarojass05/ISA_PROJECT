@@ -78,13 +78,13 @@ sv-cpu-exec: $(CPU_SRC) $(TB_DIR)/tb_cpu_program.sv ## Build and run the CPU wit
 	@mkdir -p $(SIM_BUILD)
 	$(IVERILOG) $(FLAGS) \
 		-s tb_cpu_program \
-		-Ptb_cpu_program.PROGRAM_FILE=\"$(PROGRAM)\" \
-		-Ptb_cpu_program.INITIAL_MEM=\"$(INITIAL_MEM)\" \
 		-Ptb_cpu_program.MAX_CYCLES=$(MAX_CYCLES) \
 		-Ptb_cpu_program.CACHE_ENABLE=$(CACHE_ENABLE) \
 		-o $(SIM_BUILD)/cpu_program.vvp \
 		$^
-	$(VVP) $(SIM_BUILD)/cpu_program.vvp
+	$(VVP) $(SIM_BUILD)/cpu_program.vvp \
+		+PROGRAM_FILE=$(PROGRAM) \
+		+INITIAL_MEM=$(INITIAL_MEM)
 
 setup: ## Create the Python .venv, upgrade pip, and install dependencies from requirements.txt.
 	python3 -m venv .venv

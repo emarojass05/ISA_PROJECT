@@ -33,7 +33,16 @@ module cache_hierarchy #(
     input  logic [XLEN-1:0] addr,            // byte addr (stage MEM)
     input  logic [31:0]      write_data,     // write data (mem_write = 1)
     output logic [31:0]      read_data,      // data forwarded to stage WB
-    output logic             cache_stall     // pipeline freeze
+    output logic             cache_stall,    // pipeline freeze
+
+    // Performance counters (only meaningful when cache_enable = 1)
+    output logic [31:0]      perf_l1_accesses,
+    output logic [31:0]      perf_l1_hits,
+    output logic [31:0]      perf_l1_misses,
+    output logic [31:0]      perf_l2_hits,
+    output logic [31:0]      perf_l2_misses,
+    output logic [31:0]      perf_mm_accesses,
+    output logic [31:0]      perf_stall_cycles
 );
 
     // Internal signals cache_ctrl - cache_l1d
@@ -185,7 +194,15 @@ module cache_hierarchy #(
         .mm_addr          (mm_addr),
         .mm_wdata         (mm_wdata),
         .mm_ready         (mm_ready),
-        .mm_rdata         (mm_rdata)
+        .mm_rdata         (mm_rdata),
+        // Performance counters
+        .perf_l1_accesses (perf_l1_accesses),
+        .perf_l1_hits     (perf_l1_hits),
+        .perf_l1_misses   (perf_l1_misses),
+        .perf_l2_hits     (perf_l2_hits),
+        .perf_l2_misses   (perf_l2_misses),
+        .perf_mm_accesses (perf_mm_accesses),
+        .perf_stall_cycles(perf_stall_cycles)
     );
 
     // Instance: cache_l1d (cache L1_D, 2-way LRU)
