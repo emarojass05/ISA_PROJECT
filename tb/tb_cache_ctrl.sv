@@ -11,11 +11,11 @@
 //   TC1 — Bypass (cache_enable=0): request goes to data_mem, no stall
 //   TC2 — L1 read hit: read_data correct, lru_update fires, no stall
 //   TC3 — L1 write hit: do_write_hit fires, no stall
-//   TC4 — L1 miss → L2 hit, clean L1 victim: stall ~2 cycles, correct data
-//   TC5 — L1 miss → L2 miss → MEM fetch, all clean: stall ~29 cycles
-//   TC6 — L1 miss, dirty L1 victim → L2 hit: l2_do_write_line fires, fill OK
+//   TC4 — L1 miss -> L2 hit, clean L1 victim: stall ~2 cycles, correct data
+//   TC5 — L1 miss -> L2 miss -> MEM fetch, all clean: stall ~29 cycles
+//   TC6 — L1 miss, dirty L1 victim -> L2 hit: l2_do_write_line fires, fill OK
 //   TC7 — Store miss (write-allocate): l1_do_fill + l1_do_write_hit both fire
-//   TC8 — L1 miss → L2 miss, dirty L2 victim: two MM transactions (WB + fetch)
+//   TC8 — L1 miss -> L2 miss, dirty L2 victim: two MM transactions (WB + fetch)
 // =============================================================================
 
 module tb_cache_ctrl;
@@ -42,7 +42,7 @@ module tb_cache_ctrl;
     logic [XLEN-1:0]  dm_addr;
     logic [31:0]      dm_write_data, dm_read_data;
 
-    // L1 interface (cache_ctrl → L1D outputs; L1D → cache_ctrl inputs)
+    // L1 interface (cache_ctrl -> L1D outputs; L1D -> cache_ctrl inputs)
     logic [XLEN-1:0]      l1_req_addr;
     logic                 l1_hit, l1_hit_way;
     logic [31:0]          l1_hit_rdata;
@@ -293,13 +293,13 @@ module tb_cache_ctrl;
         mem_write = 1'b0; l1_hit = 1'b0;
 
         // ─────────────────────────────────────────────────────────────────
-        $display("\n=== TC4: L1 miss → L2 hit (clean L1 victim) ===");
+        $display("\n=== TC4: L1 miss -> L2 hit (clean L1 victim) ===");
         begin
             logic [LINE_BITS-1:0] l2_line;
             int cycles;
             l2_line = make_line(32'hBB00_0000);
 
-            // addr = 0x0200 → offset=0, word[0] expected
+            // addr = 0x0200 -> offset=0, word[0] expected
             @(negedge clk);
             addr            = 32'h0000_0200;
             mem_read        = 1'b1;
@@ -310,8 +310,9 @@ module tb_cache_ctrl;
             l2_hit_way      = 2'd2;
             l2_hit_rdata_line = l2_line;
 
-            @(posedge clk); #1;   // FSM latches miss → L2_LOOKUP
-            mem_read = 1'b0;      // clear so IDLE re-entry is quiet
+            // FSM latches miss -> L2_LOOKUP
+            @(posedge clk); #1;
+            mem_read = 1'b0;
             check("stall during miss", cache_stall, 1'b1);
 
             // Wait for L1_FILL (state where l1_do_fill and read_data are valid)
@@ -327,11 +328,11 @@ module tb_cache_ctrl;
         end
 
         // ─────────────────────────────────────────────────────────────────
-        $display("\n=== TC5: L1 miss → L2 miss → MEM fetch (all victims clean) ===");
+        $display("\n=== TC5: L1 miss -> L2 miss -> MEM fetch (all victims clean) ===");
         begin
             logic [LINE_BITS-1:0] mem_line;
             int cycles;
-            // addr = 0x030C → bits[4:2] = 0x0C[4:2] = 011 = 3 → word[3]
+            // addr = 0x030C -> bits[4:2] = 0x0C[4:2] = 011 = 3 -> word[3]
             mem_line = make_line(32'hCC00_0000);
             l2_fill_happened = 0;   // reset monitor before this test
 
@@ -344,7 +345,8 @@ module tb_cache_ctrl;
             l2_hit          = 1'b0;
             l2_victim_dirty = 1'b0;
 
-            @(posedge clk); #1;   // FSM latches miss → L2_LOOKUP
+            // FSM latches miss -> L2_LOOKUP
+            @(posedge clk); #1;
             mem_read = 1'b0;
             check("stall=1 on miss", cache_stall, 1'b1);
 
@@ -356,7 +358,7 @@ module tb_cache_ctrl;
             $display("  [INFO] cycles to L1_FILL = %0d (expected ~27: L2_LOOKUP+MEM×25+L2_FILL)", cycles);
             check("l1_do_fill fires",           l1_do_fill,       1'b1);
             check("l2_do_fill happened",        l2_fill_happened, 1'b1);
-            // addr[4:2] = 0x0C[4:2] = 011 = 3 → word[3]
+            // addr[4:2] = 0x0C[4:2] = 011 = 3 -> word[3]
             check32("read_data = line[word3]",  read_data,        32'hCC00_0003);
 
             @(posedge clk); #1;
@@ -364,12 +366,12 @@ module tb_cache_ctrl;
         end
 
         // ─────────────────────────────────────────────────────────────────
-        $display("\n=== TC6: L1 miss, dirty L1 victim → L2 hit ===");
+        $display("\n=== TC6: L1 miss, dirty L1 victim -> L2 hit ===");
         begin
             logic [LINE_BITS-1:0] l2_line, dirty_line;
             int cycles;
-            // addr = 0x0404 → [4:2] = 3'b000 + carry → word[1]? No:
-            // 0x04 = 0000_0100 → bits[4:2] = 001 → word[1]
+            // addr = 0x0404 -> [4:2] = 3'b000 + carry -> word[1]? No:
+            // 0x04 = 0000_0100 -> bits[4:2] = 001 -> word[1]
             l2_line    = make_line(32'hDD00_0000);
             dirty_line = make_line(32'hEE00_0000);
 
@@ -377,7 +379,8 @@ module tb_cache_ctrl;
             addr            = 32'h0000_0404;
             mem_read        = 1'b1;
             l1_hit          = 1'b0;
-            l1_victim_dirty = 1'b1;         // dirty! → L1_WRITEBACK first
+            // dirty victim -> FSM takes L1_WRITEBACK path before L2_LOOKUP
+            l1_victim_dirty = 1'b1;
             l1_victim_way   = 1'b0;
             l1_victim_addr  = 32'h0000_0800;
             l1_victim_data  = dirty_line;
@@ -385,7 +388,8 @@ module tb_cache_ctrl;
             l2_hit_way      = 2'd1;
             l2_hit_rdata_line = l2_line;
 
-            @(posedge clk); #1;   // FSM latches miss → L1_WRITEBACK
+            // FSM latches miss -> L1_WRITEBACK
+            @(posedge clk); #1;
             mem_read = 1'b0;
 
             // One cycle into L1_WRITEBACK — check that l2_do_write_line fires
@@ -395,7 +399,7 @@ module tb_cache_ctrl;
             $display("  [INFO] cycles to L1_FILL = %0d (expected 3: L1_WB+L2_LOOKUP+L1_FILL)", cycles);
 
             check("l1_do_fill fires",         l1_do_fill,  1'b1);
-            // 0x0404[4:2] = 001 → word[1]
+            // 0x0404[4:2] = 001 -> word[1]
             check32("read_data = line[word1]",read_data,   32'hDD00_0001);
 
             @(posedge clk); #1;
@@ -411,7 +415,8 @@ module tb_cache_ctrl;
             mem_line = make_line(32'hFF00_0000);
 
             @(negedge clk);
-            addr            = 32'h0000_0510;  // [4:2] = 010 → word[2]
+            // [4:2] = 010 -> word[2]
+            addr            = 32'h0000_0510;
             mem_write       = 1'b1;
             write_data      = 32'hDEAD_CAFE;
             l1_hit          = 1'b0;
@@ -439,12 +444,11 @@ module tb_cache_ctrl;
         end
 
         // ─────────────────────────────────────────────────────────────────
-        $display("\n=== TC8: L1 miss → L2 miss, dirty L2 victim (2× MM) ===");
+        $display("\n=== TC8: L1 miss -> L2 miss, dirty L2 victim (2× MM) ===");
         begin
             logic [LINE_BITS-1:0] dirty_l2, fetch_line;
             int cycles;
-            // addr = 0x060C → [4:2] = 001 → word[1]? Let's check:
-            // 0x60C = 0110_0000_1100 → [4:2] = 011 → word[3]
+            // addr = 0x060C -> [4:2]: 0x60C = 0110_0000_1100 -> bits[4:2] = 011 -> word[3]
             dirty_l2   = make_line(32'hAA00_0000);
             fetch_line = make_line(32'h5500_0000);
 
@@ -455,7 +459,8 @@ module tb_cache_ctrl;
             l1_victim_dirty = 1'b0;
             l1_victim_way   = 1'b0;
             l2_hit          = 1'b0;
-            l2_victim_dirty = 1'b1;   // dirty L2 victim → MM write-back first
+            // dirty L2 victim -> FSM issues MM write-back before the fetch
+            l2_victim_dirty = 1'b1;
             l2_victim_addr  = 32'h0001_0000;
             l2_victim_data  = dirty_l2;
 
@@ -478,7 +483,7 @@ module tb_cache_ctrl;
 
             $display("  [INFO] cycles to L1_FILL = %0d (expected ~56: 2×25 + overhead)", cycles);
             check("l1_do_fill fires",        l1_do_fill,  1'b1);
-            // 0x060C[4:2] = 011 → word[3]
+            // 0x060C[4:2] = 011 -> word[3]
             check32("read_data = line[word3]", read_data, 32'h5500_0003);
 
             @(posedge clk); #1;
@@ -487,13 +492,13 @@ module tb_cache_ctrl;
 
         // ─────────────────────────────────────────────────────────────────
         $display("\n============================================");
-        $display(" RESULTADO: %0d PASS  /  %0d FAIL", pass_count, fail_count);
+        $display(" RESULT: %0d PASS  /  %0d FAIL", pass_count, fail_count);
         $display("============================================\n");
 
         if (fail_count == 0)
-            $display(" [OK] tb_cache_ctrl: todos los casos pasaron.");
+            $display(" [OK] tb_cache_ctrl: all cases passed.");
         else
-            $display(" [ERROR] tb_cache_ctrl: %0d caso(s) fallaron.", fail_count);
+            $display(" [ERROR] tb_cache_ctrl: %0d case(s) failed.", fail_count);
 
         $finish;
     end

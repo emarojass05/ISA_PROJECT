@@ -33,7 +33,7 @@ module register_file #(
             end
 
             R_DELTA: begin
-                rd1 = 32'h9E37_79B9;
+                rd1 = DELTA_CONSTANT;
             end
 
             default: begin
@@ -53,7 +53,7 @@ module register_file #(
             end
 
             R_DELTA: begin
-                rd2 = 32'h9E37_79B9;
+                rd2 = DELTA_CONSTANT;
             end
 
             default: begin

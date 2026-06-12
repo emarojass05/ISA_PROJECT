@@ -70,10 +70,8 @@ module tb_cpu_top;
         errors = 0;
         rst    = 1'b1;
 
-        // Esperar a que el initial de instr_mem termine de llenar memoria.
         #1;
 
-        // Programa de prueba cargado manualmente.
         //
         // 0x00: luhw x5, 0x1234      -> x5 = 0x12340000
         // 0x04: llhw x5, 0xABCD      -> x5 = 0x1234ABCD
@@ -95,8 +93,8 @@ module tb_cpu_top;
 
         rst = 1'b0;
 
-        // El procesador es pipeline, por eso no se revisa instrucción por instrucción
-        // en ciclos consecutivos. Se deja correr suficiente para que haga WB.
+        // Pipeline: give enough cycles for instructions to complete WB
+        // before sampling register values.
         wait_cycles(40);
 
         check_value(dut.u_rf.registers[5],

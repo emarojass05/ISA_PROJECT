@@ -1,14 +1,14 @@
 `timescale 1ns/1ps
 // =============================================================================
-// tb_main_mem_model.sv — Testbench para main_mem_model
+// tb_main_mem_model.sv — Testbench for main_mem_model
 // =============================================================================
-// Casos de prueba:
+// Test cases:
 //   TC1 — Reset: ready=0, rdata=0
-//   TC2 — Lectura: req=1 → exactly 25 ciclos → ready=1, datos correctos
-//   TC3 — ready dura solo 1 ciclo
-//   TC4 — Escritura + re-lectura: escribir línea, luego leerla de vuelta
-//   TC5 — Dos transacciones consecutivas: segunda empieza justo después de ready
-//   TC6 — Sin solapamiento: req ignorado mientras active=1
+//   TC2 — Read: req=1 -> exactly 25 cycles -> ready=1, correct data
+//   TC3 — ready lasts only 1 cycle
+//   TC4 — Write + re-read: write a line, then read it back
+//   TC5 — Two consecutive transactions: second starts right after ready
+//   TC6 — No overlap: req ignored while active=1
 // =============================================================================
 
 module tb_main_mem_model;
@@ -19,7 +19,7 @@ module tb_main_mem_model;
     localparam int LATENCY    = 25;
     localparam int DEPTH      = 16384;
 
-    // ── DUT ──────────────────────────────────────────────────────────────
+    // ── DUT ──────────────────────────────────────────────────────────────────
     logic                 clk, rst;
     logic                 req;
     logic                 we;
@@ -44,11 +44,11 @@ module tb_main_mem_model;
         .rdata(rdata)
     );
 
-    // ── Clock ─────────────────────────────────────────────────────────────
+    // ── Clock ─────────────────────────────────────────────────────────────────
     initial clk = 0;
     always  #5 clk = ~clk;
 
-    // ── Helpers ───────────────────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────────────
     int pass_count, fail_count;
     int cycle_count;
 
@@ -57,7 +57,7 @@ module tb_main_mem_model;
             $display("  [PASS] %s", name);
             pass_count++;
         end else begin
-            $display("  [FAIL] %s — got %0b, exp %0b", name, got, exp);
+            $display("  [FAIL] %s -- got %0b, exp %0b", name, got, exp);
             fail_count++;
         end
     endtask
@@ -67,13 +67,11 @@ module tb_main_mem_model;
             $display("  [PASS] %s (= %08h)", name, got);
             pass_count++;
         end else begin
-            $display("  [FAIL] %s — got %08h, exp %08h", name, got, exp);
+            $display("  [FAIL] %s -- got %08h, exp %08h", name, got, exp);
             fail_count++;
         end
     endtask
 
-    // Envía req por 1 ciclo y espera a que ready llegue.
-    // Devuelve el número de ciclos transcurridos hasta ready.
     task automatic send_req(
         input  logic [XLEN-1:0]       a,
         input  logic                  w,
@@ -96,7 +94,6 @@ module tb_main_mem_model;
         end
     endtask
 
-    // Construye una línea de 256 bits: cada palabra = base + offset
     function automatic logic [LINE_BITS-1:0] make_line(input logic [31:0] base);
         logic [LINE_BITS-1:0] line;
         int i;
@@ -105,7 +102,7 @@ module tb_main_mem_model;
         return line;
     endfunction
 
-    // ── Estímulos ─────────────────────────────────────────────────────────
+    // ── Stimulus ──────────────────────────────────────────────────────────────
     initial begin
         $dumpfile("build/sim/tb_main_mem_model.vcd");
         $dumpvars(0, tb_main_mem_model);
@@ -118,20 +115,18 @@ module tb_main_mem_model;
         addr  = '0;
         wdata = '0;
 
-        // ─────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────────
         $display("\n=== TC1: Reset ===");
         rst = 1'b1;
         repeat(3) @(posedge clk); #1;
-        check("ready=0 tras reset", ready, 1'b0);
-        check32("rdata[31:0]=0 tras reset", rdata[31:0], 32'h0);
+        check("ready=0 after reset", ready, 1'b0);
+        check32("rdata[31:0]=0 after reset", rdata[31:0], 32'h0);
         @(negedge clk); rst = 1'b0;
 
-        // ─────────────────────────────────────────────────────────────────
-        $display("\n=== TC2: Lectura — latencia exacta de 25 ciclos ===");
+        // ─────────────────────────────────────────────────────────────────────
+        $display("\n=== TC2: Read — exact 25-cycle latency ===");
         begin
             int cycles;
-            // Primero escribimos datos conocidos directamente en la memoria del DUT
-            // para poder verificar la lectura (acceso backdoor a memoria del modelo)
             dut.memory[0] = 32'hDEAD_0000;
             dut.memory[1] = 32'hDEAD_0001;
             dut.memory[2] = 32'hDEAD_0002;
@@ -143,49 +138,46 @@ module tb_main_mem_model;
 
             send_req(32'h0000_0000, 1'b0, '0, cycles);
 
-            $display("  [INFO] ciclos hasta ready = %0d (esperado %0d)", cycles, LATENCY);
-            check("latencia = 25 ciclos", (cycles == LATENCY), 1'b1);
-            check("ready=1 al ciclo 25",  ready, 1'b1);
+            $display("  [INFO] cycles until ready = %0d (expected %0d)", cycles, LATENCY);
+            check("latency = 25 cycles", (cycles == LATENCY), 1'b1);
+            check("ready=1 at cycle 25",  ready, 1'b1);
             check32("rdata[word0]", rdata[0*32 +: 32], 32'hDEAD_0000);
             check32("rdata[word3]", rdata[3*32 +: 32], 32'hDEAD_0003);
             check32("rdata[word7]", rdata[7*32 +: 32], 32'hDEAD_0007);
         end
 
-        // ─────────────────────────────────────────────────────────────────
-        $display("\n=== TC3: ready dura solo 1 ciclo ===");
+        // ─────────────────────────────────────────────────────────────────────
+        $display("\n=== TC3: ready lasts only 1 cycle ===");
         @(posedge clk); #1;
-        check("ready=0 ciclo después", ready, 1'b0);
+        check("ready=0 next cycle", ready, 1'b0);
 
-        // ─────────────────────────────────────────────────────────────────
-        $display("\n=== TC4: Escritura + re-lectura ===");
+        // ─────────────────────────────────────────────────────────────────────
+        $display("\n=== TC4: Write + re-read ===");
         begin
             logic [LINE_BITS-1:0] write_line;
             int cycles;
 
             write_line = make_line(32'hCAFE_0000);
 
-            // Escribir en dirección 0x100 (word_base = 0x40 = 64)
             send_req(32'h0000_0100, 1'b1, write_line, cycles);
-            check("write: latencia = 25 ciclos", (cycles == LATENCY), 1'b1);
+            check("write: latency = 25 cycles", (cycles == LATENCY), 1'b1);
             check("write: ready=1", ready, 1'b1);
 
-            @(posedge clk); #1;  // esperar ciclo después de ready
+            @(posedge clk); #1;
 
-            // Leer de vuelta la misma línea
             send_req(32'h0000_0100, 1'b0, '0, cycles);
-            check("re-read: latencia = 25 ciclos", (cycles == LATENCY), 1'b1);
+            check("re-read: latency = 25 cycles", (cycles == LATENCY), 1'b1);
             check32("re-read word0", rdata[0*32 +: 32], 32'hCAFE_0000);
             check32("re-read word4", rdata[4*32 +: 32], 32'hCAFE_0004);
             check32("re-read word7", rdata[7*32 +: 32], 32'hCAFE_0007);
         end
 
-        // ─────────────────────────────────────────────────────────────────
-        $display("\n=== TC5: Dos transacciones consecutivas ===");
+        // ─────────────────────────────────────────────────────────────────────
+        $display("\n=== TC5: Two consecutive transactions ===");
         begin
             logic [LINE_BITS-1:0] line_a, line_b;
             int cycles_a, cycles_b;
 
-            // Preparar datos en memoria
             dut.memory[8]  = 32'hAAAA_0000;
             dut.memory[9]  = 32'hAAAA_0001;
             dut.memory[10] = 32'hAAAA_0002;
@@ -204,28 +196,26 @@ module tb_main_mem_model;
             dut.memory[22] = 32'hBBBB_0006;
             dut.memory[23] = 32'hBBBB_0007;
 
-            // Primera transacción: leer línea en addr=0x20 (word_base=8)
             send_req(32'h0000_0020, 1'b0, '0, cycles_a);
             check32("tx_a word0", rdata[0*32 +: 32], 32'hAAAA_0000);
 
-            @(posedge clk); #1;  // ciclo posterior a ready (ready ya=0)
+            @(posedge clk); #1;
 
-            // Segunda transacción inmediata: leer línea en addr=0x40 (word_base=16)
             send_req(32'h0000_0040, 1'b0, '0, cycles_b);
-            check("tx_b: latencia = 25", (cycles_b == LATENCY), 1'b1);
+            check("tx_b: latency = 25", (cycles_b == LATENCY), 1'b1);
             check32("tx_b word0", rdata[0*32 +: 32], 32'hBBBB_0000);
             check32("tx_b word7", rdata[7*32 +: 32], 32'hBBBB_0007);
         end
 
-        // ─────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────────
         $display("\n============================================");
-        $display(" RESULTADO: %0d PASS  /  %0d FAIL", pass_count, fail_count);
+        $display(" RESULT: %0d PASS  /  %0d FAIL", pass_count, fail_count);
         $display("============================================\n");
 
         if (fail_count == 0)
-            $display(" [OK] tb_main_mem_model: todos los casos pasaron.");
+            $display(" [OK] tb_main_mem_model: all cases passed.");
         else
-            $display(" [ERROR] tb_main_mem_model: %0d caso(s) fallaron.", fail_count);
+            $display(" [ERROR] tb_main_mem_model: %0d case(s) failed.", fail_count);
 
         $finish;
     end

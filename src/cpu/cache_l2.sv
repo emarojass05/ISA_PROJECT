@@ -100,9 +100,10 @@ module cache_l2 #(
 );
 
     // -- Address field widths ---------------------------------------------
-    localparam int OFFSET_BITS = $clog2(LINE_WORDS) + 2;          // 5 bits
-    localparam int INDEX_BITS  = $clog2(SETS);                     // 7 bits
-    localparam int TAG_BITS    = XLEN - INDEX_BITS - OFFSET_BITS;  // 20 bits
+    localparam int BYTE_ALIGN_BITS = 2;
+    localparam int OFFSET_BITS     = $clog2(LINE_WORDS) + BYTE_ALIGN_BITS;  // 5 bits
+    localparam int INDEX_BITS      = $clog2(SETS);                           // 7 bits
+    localparam int TAG_BITS        = XLEN - INDEX_BITS - OFFSET_BITS;        // 20 bits
 
     // -- Storage arrays ---------------------------------------------------
     logic                  valid [WAYS][SETS];

@@ -12,6 +12,9 @@ module cpu_top #(
     input  logic rst
 );
 
+    // Password checked against rs1 to grant key-vault access
+    localparam logic [31:0] AUTH_MAGIC_WORD = 32'hDEAD_BEEF;
+
     if_id_t  if_id_reg;
     id_ex_t  id_ex_reg;
     ex_mem_t ex_mem_reg;
@@ -63,6 +66,7 @@ module cpu_top #(
     logic id_u_load;
 
     logic auth_bit;
+    logic [3:0] kv_addr;
 
     logic [6:0] id_funct7;
     funct3_t    id_funct3;
@@ -169,7 +173,7 @@ module cpu_top #(
         end
     end
 
-    assign pc_next_stall = (pc_write && !cache_stall) ? if_pc_next : if_pc_cur;
+    assign pc_next_stall = pc_write ? if_pc_next : if_pc_cur;
 
     decoder #(
         .XLEN(XLEN)
@@ -267,6 +271,7 @@ module cpu_top #(
 
         .branch_taken(ex_branch_taken),
         .jump_taken(id_jump_taken),
+        .cache_stall(cache_stall),
 
         .pc_write(pc_write),
         .if_id_write(if_id_write),
@@ -345,11 +350,15 @@ module cpu_top #(
 
     assign id_vault_we = (id_sec_op == SEC_LDK);
 
+    // SEC_TEA always reads from key slot 0; LDK pipelines the address; otherwise use rs2
+    assign kv_addr = id_ex_reg.vault_we ? id_ex_reg.rs2_data[3:0] :
+                     (id_sec_op == SEC_TEA) ? 4'd0 : id_rs2_data[3:0];
+
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             auth_bit <= 1'b0;
         end else if (id_sec_op == SEC_AUTH) begin
-            if (id_rs1_data == 32'hDEADBEEF) begin
+            if (id_rs1_data == AUTH_MAGIC_WORD) begin
                 auth_bit <= 1'b1;
             end else begin
                 auth_bit <= 1'b0;
@@ -365,7 +374,7 @@ module cpu_top #(
         .clk(clk),
         .vault_we(id_ex_reg.vault_we),
         .auth_en(auth_bit),
-        .addr(id_ex_reg.vault_we ? id_ex_reg.rs2_data[3:0] :(id_sec_op == SEC_TEA ? 4'd0 : id_rs2_data[3:0])),
+        .addr(kv_addr),
         .wdata(id_ex_reg.rs1_data),
         .k_out(id_k_out)
     );

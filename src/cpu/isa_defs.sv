@@ -91,12 +91,15 @@ package isa_defs;
     } pc_src_t;
 
     // Register aliases
-    localparam logic [4:0] R_ZERO  = 5'd0;
-    localparam logic [4:0] R_RA    = 5'd1;
-    localparam logic [4:0] R_SP    = 5'd2;
-    localparam logic [4:0] R_SR    = 5'd20;
-    localparam logic [4:0] R_DELTA = 5'd30;
-    localparam logic [4:0] R_VP    = 5'd31;
+    localparam logic [4:0]  R_ZERO  = 5'd0;
+    localparam logic [4:0]  R_RA    = 5'd1;
+    localparam logic [4:0]  R_SP    = 5'd2;
+    localparam logic [4:0]  R_SR    = 5'd20;
+    localparam logic [4:0]  R_DELTA = 5'd30;
+    localparam logic [4:0]  R_VP    = 5'd31;
+
+    // Hardwired value returned when reading R_DELTA (TEA algorithm delta constant)
+    localparam logic [31:0] DELTA_CONSTANT = 32'h9E37_79B9;
 
     // --- Pipeline Stage Registers (Structs) ---
 
