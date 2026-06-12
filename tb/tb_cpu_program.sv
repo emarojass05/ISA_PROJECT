@@ -120,6 +120,8 @@ module tb_cpu_program;
         real ipc;
         real l1_hit_rate;
         real l2_hit_rate;
+        real mm_bytes;
+        real bw_bytes_per_cycle;
         begin
             file = $fopen(METRICS_FILE, "w");
 
@@ -135,6 +137,10 @@ module tb_cpu_program;
                 l2_hit_rate = ((dut.perf_l2_hits + dut.perf_l2_misses) > 0) ?
                               ($itor(dut.perf_l2_hits) /
                                $itor(dut.perf_l2_hits + dut.perf_l2_misses) * 100.0) : 0.0;
+
+                // Each main-memory fetch transfers one 256-bit (32-byte) cache line.
+                mm_bytes           = $itor(dut.perf_mm_accesses) * 32.0;
+                bw_bytes_per_cycle = (cycles > 0) ? (mm_bytes / $itor(cycles)) : 0.0;
 
                 $fdisplay(file, "PERFORMANCE METRICS");
                 $fdisplay(file, "===================");
@@ -156,6 +162,8 @@ module tb_cpu_program;
                 $fdisplay(file, "L2 hit rate          : %.2f%%", l2_hit_rate);
                 $fdisplay(file, "");
                 $fdisplay(file, "Main memory fetches  : %0d", dut.perf_mm_accesses);
+                $fdisplay(file, "MM bytes transferred : %.0f B", mm_bytes);
+                $fdisplay(file, "BW utilization       : %.4f B/cycle", bw_bytes_per_cycle);
 
                 $fclose(file);
                 $display("[OK] Metrics written to %0s", METRICS_FILE);
@@ -174,6 +182,7 @@ module tb_cpu_program;
                 $display("  L1 misses -> L2      : %0d", dut.perf_l1_misses);
                 $display("  L2 hit rate          : %.2f%%", l2_hit_rate);
                 $display("  Main memory fetches  : %0d", dut.perf_mm_accesses);
+                $display("  BW utilization       : %.4f B/cycle", bw_bytes_per_cycle);
                 $display("=======================================");
             end
         end
