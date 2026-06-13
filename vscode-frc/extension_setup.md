@@ -96,7 +96,7 @@ Abrir cualquier archivo `.fr` en VS Code. Debería poder observarse:
 
 - **Resaltado de sintaxis**: palabras clave, tipos, literales y comentarios
   coloreados según el tema activo.
-- **Autocompletado**: sugerencias al escribir (o con **Ctrl+Space**) para
-  palabras clave, snippets y símbolos declarados en el archivo.
+- **Autocompletado**: sugerencias al escribir (o con **Alt+Space**) para
+  palabras clave, variables y funciones.
 - **Diagnósticos**: subrayado ondulado rojo en errores léxicos, sintácticos o
   semánticos (requiere `frc.compilerPath` configurado).
