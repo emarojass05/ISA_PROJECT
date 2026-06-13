@@ -1,53 +1,3 @@
-"""
-dce.py - Dead Code Elimination (DCE).
-
-Que hace
---------
-Elimina instrucciones cuyo resultado nunca es utilizado. Una instruccion
-"dest = ..." es codigo muerto si 'dest' no esta viva inmediatamente despues
-de esa instruccion (segun el analisis de liveness).
-
-Prerequisito
-------------
-Requiere liveness.py para calcular live_after por instruccion.
-
-Reglas de eliminacion
----------------------
-Una instruccion se ELIMINA si y solo si cumple TODAS estas condiciones:
-  1. Define exactamente una variable (defs() retorna un conjunto no vacio).
-  2. Esa variable NO esta en live_after de la instruccion.
-  3. La instruccion NO tiene efectos de lado observables.
-
-Efectos de lado que impiden la eliminacion:
-  - IRStore   escritura en memoria
-  - IRCall    llamada a funcion (puede tener efectos externos)
-  - IRReturn  retorno de funcion
-  - IRLabel   etiqueta (punto de salto, estructural)
-  - IRGoto    salto incondicional
-  - IRIfTrue  salto condicional
-  - IRIfFalse salto condicional
-
-Iteracion hasta punto fijo
---------------------------
-Eliminar una instruccion puede hacer que la variable que la alimentaba
-quede tambien muerta. Por eso se itera:
-
-  Ejemplo:
-    _t0 = a + b    <- si _t1 se elimina, _t0 queda muerta tambien
-    _t1 = _t0 * 2  <- muerta (nadie usa _t1)
-
-  Primera pasada: elimina "_t1 = _t0 * 2"
-  Segunda pasada: elimina "_t0 = a + b" (ahora _t0 tambien esta muerta)
-
-Se itera hasta que no se elimine ninguna instruccion.
-
-Interfaz publica
-----------------
-    DCEStats                metricas del pass
-    eliminate_dead_code(ir_func)     aplica DCE a una IRFunction
-    dce_program(ir_program)          aplica DCE a todo el programa
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -63,32 +13,25 @@ from .liveness import analyze_liveness, instr_liveness
 
 
 # ---------------------------------------------------------------------------
-# Tipos de instruccion con efectos de lado (nunca se eliminan)
-# ---------------------------------------------------------------------------
 
 _SIDE_EFFECT_TYPES = (IRStore, IRCall, IRReturn, IRLabel, IRGoto, IRIfTrue, IRIfFalse)
 
 
 def _has_side_effect(instr: IRInstruction) -> bool:
-    """
-    Retorna True si la instruccion tiene efectos de lado observables
-    y por lo tanto nunca puede ser eliminada por DCE.
-    """
+    """Return True if the instruction has observable side effects."""
     if isinstance(instr, _SIDE_EFFECT_TYPES):
         return True
-    # Algunos IRCall tienen has_side_effect explicito
+    # Some instances carry an explicit has_side_effect flag
     if hasattr(instr, "has_side_effect") and instr.has_side_effect:
         return True
     return False
 
 
 # ---------------------------------------------------------------------------
-# Metricas
-# ---------------------------------------------------------------------------
 
 @dataclass
 class DCEStats:
-    """Metricas del pass de Dead Code Elimination."""
+    """Metrics for the Dead Code Elimination pass."""
     instrs_before:   int = 0
     instrs_after:    int = 0
     instrs_removed:  int = 0
@@ -96,25 +39,16 @@ class DCEStats:
 
     @property
     def reduction_pct(self) -> float:
-        """Porcentaje de instrucciones eliminadas."""
+        """Percentage of instructions eliminated."""
         if self.instrs_before == 0:
             return 0.0
         return 100.0 * self.instrs_removed / self.instrs_before
 
 
 # ---------------------------------------------------------------------------
-# Un pase de DCE sobre el body plano
-# ---------------------------------------------------------------------------
 
 def _dce_pass(ir_func: IRFunction) -> int:
-    """
-    Ejecuta un pase de DCE sobre el body de una funcion.
-
-    Construye el CFG, corre liveness, y elimina instrucciones muertas
-    bloque a bloque.
-
-    Retorna el numero de instrucciones eliminadas en este pase.
-    """
+    """Execute one DCE pass; return number of instructions removed."""
     cfg = CFG.build_from_function(ir_func)
     res = analyze_liveness(cfg)
     removed = 0
@@ -125,27 +59,27 @@ def _dce_pass(ir_func: IRFunction) -> int:
 
         kept = []
         for instr, il in zip(block.instructions, il_list):
-            # Nunca eliminar instrucciones con efectos de lado
+            # Never remove instructions with side effects
             if _has_side_effect(instr):
                 kept.append(instr)
                 continue
 
             defs = instr.defs()
             if not defs:
-                # Instruccion sin definicion (raro pero posible) -> conservar
+                # No definition (rare) -> keep
                 kept.append(instr)
                 continue
 
-            # Eliminar si NINGUNA de las variables definidas esta viva despues
+            # Remove if none of the defined variables are live after
             if defs.isdisjoint(il.live_after):
                 removed += 1
-                # No se agrega a kept -> eliminada
+                # Not added to kept -> eliminated
             else:
                 kept.append(instr)
 
         block.instructions = kept
 
-    # Re-aplanar el body desde los bloques modificados
+    # Flatten the body from the modified blocks
     ir_func.body = [
         instr
         for block in cfg.blocks
@@ -156,19 +90,9 @@ def _dce_pass(ir_func: IRFunction) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Interfaz publica
-# ---------------------------------------------------------------------------
 
 def eliminate_dead_code(ir_func: IRFunction) -> DCEStats:
-    """
-    Aplica Dead Code Elimination iterativa a una IRFunction.
-
-    Itera hasta punto fijo: cada pasada puede exponer nueva
-    codigo muerto al eliminar instrucciones previas.
-
-    Modifica ir_func.body in-place.
-    Retorna DCEStats con las metricas del pass.
-    """
+    """Apply iterative DCE to an IRFunction until no more code can be removed."""
     stats = DCEStats()
     stats.instrs_before = len(ir_func.body)
 
@@ -184,10 +108,7 @@ def eliminate_dead_code(ir_func: IRFunction) -> DCEStats:
 
 
 def dce_program(ir_program: IRProgram) -> DCEStats:
-    """
-    Aplica DCE a todas las funciones del programa.
-    Retorna estadisticas acumuladas.
-    """
+    """Apply DCE to all functions in the program; return accumulated stats."""
     total = DCEStats()
     for func in ir_program.functions:
         s = eliminate_dead_code(func)

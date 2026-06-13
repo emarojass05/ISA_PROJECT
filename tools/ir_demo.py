@@ -200,32 +200,6 @@ def ejemplo_rename():
 
 
 # ---------------------------------------------------------------------------
-# Ejemplo 5 — ESCRIBE EL TUYO ACÁ
-# Modificá este bloque para probar cualquier estructura que quieras.
-# ---------------------------------------------------------------------------
-
-def ejemplo_custom():
-    separator("custom  —  tu propio ejemplo")
-    prog = IRProgram()
-    f = IRFunction(name="mi_funcion", params=["x", "y"], return_type="int")
-
-    # ─────────────────────────────────────────────
-    # EDITÁ DESDE ACÁ:
-
-    f.emit(IRLabel("FUNC_mi_funcion"))
-    f.emit(IRBinOp("t0", "x", BinOp.MUL, "y"))   # t0 = x * y
-    f.emit(IRBinOp("t1", "t0", BinOp.ADD, "1"))   # t1 = t0 + 1
-    f.emit(IRReturn("t1"))
-
-    # HASTA ACÁ
-    # ─────────────────────────────────────────────
-
-    prog.add_function(f)
-    print_ir(prog)
-    print_defs_uses(f)
-
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -234,7 +208,6 @@ EJEMPLOS = {
     "if":        ejemplo_if,
     "factorial": ejemplo_factorial,
     "rename":    ejemplo_rename,
-    "custom":    ejemplo_custom,
 }
 
 if __name__ == "__main__":

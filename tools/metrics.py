@@ -1,23 +1,3 @@
-"""
-metrics.py - Generador de metricas CSV para el pipeline de optimizacion.
-
-Uso (desde la raiz del proyecto, con el venv activado):
-    python3 tools/metrics.py [--out build/metrics.csv] [--python python3]
-
-Estrategia
-----------
-Llama al compilador via subprocess para cada combinacion (programa x nivel),
-parsea la seccion "OPTIMIZER" del stdout y construye el CSV.
-No importa nada del compilador directamente, por lo que funciona con
-cualquier Python que tenga el proyecto en el PYTHONPATH.
-
-Columnas del CSV
-----------------
-program, level, instrs_before, instrs_after, instrs_saved,
-rename_vars, dce_removed, unroll_loops, unroll_added,
-sched_moved, sched_blocks, elapsed_ms, code_bytes
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -27,10 +7,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-OPTS_DIR     = PROJECT_ROOT / "programs" / "source" / "opts"
-BUILD_DIR    = PROJECT_ROOT / "build"
-DEFAULT_OUT  = BUILD_DIR / "metrics.csv"
+PROJECT_ROOT     = Path(__file__).resolve().parent.parent
+OPTS_DIR         = PROJECT_ROOT / "programs" / "source" / "opts"
+BUILD_DIR        = PROJECT_ROOT / "build"
+BIN_DIR          = BUILD_DIR / "bin"
+SIM_DIR          = BUILD_DIR / "sim"
+CYCLE_COUNT_FILE = SIM_DIR / "cycle_count.txt"
+DEFAULT_OUT      = BUILD_DIR / "metrics.csv"
+DEFAULT_MAX_CYCLES = 2000
 
 CSV_FIELDS = [
     "program",
@@ -46,22 +30,14 @@ CSV_FIELDS = [
     "sched_moved",
     "sched_blocks",
     "elapsed_ms",
+    "cycle_count",
 ]
 
 
 # ---------------------------------------------------------------------------
-# Parser del bloque OPTIMIZER en la salida del compilador
-# ---------------------------------------------------------------------------
 
 def _parse_optimizer_block(text: str) -> dict:
-    """
-    Extrae las metricas del bloque:
-        ========== OPTIMIZER (Ox) ==========
-        Optimization level : O1
-        Instructions before: 45
-        ...
-    Retorna un dict con las claves del CSV (sin program/level).
-    """
+    """Parse the OPTIMIZER block from compiler stdout into a metrics dict."""
     def _int(pattern: str, default: int = 0) -> int:
         m = re.search(pattern, text)
         return int(m.group(1)) if m else default
@@ -85,22 +61,55 @@ def _parse_optimizer_block(text: str) -> dict:
 
 
 def _add_code_bytes(row: dict) -> dict:
-    """Agrega code_bytes = instrs_after * 4 (cada instruccion ocupa 4 bytes)."""
+    """Append code_bytes = instrs_after * 4 to a metrics row."""
     after = row.get("instrs_after", 0)
     row["code_bytes"] = after * 4 if isinstance(after, int) else "ERROR"
     return row
 
 
-# ---------------------------------------------------------------------------
-# Ejecucion del compilador para un programa y nivel
+def _compile_to_hex(python_cmd: str, source: Path, flag: str | None, hex_path: Path) -> bool:
+    """Compile source at the given level to a .hex file. Returns True on success."""
+    cmd = [python_cmd, "-m", "src.compiler.main", str(source)]
+    if flag:
+        cmd.append(flag)
+    cmd += ["-o", str(hex_path)]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT))
+    return result.returncode == 0 and hex_path.exists()
+
+
+def _run_simulation(hex_path: Path, max_cycles: int) -> int | str:
+    """Run make sv-cpu-exec and read the cycle count written by the testbench.
+
+    Returns the cycle count as int, 'timeout' if MAX_CYCLES was reached,
+    or an error string if the simulation itself failed.
+    """
+    CYCLE_COUNT_FILE.unlink(missing_ok=True)
+
+    cmd = [
+        "make", "sv-cpu-exec",
+        f"PROGRAM={hex_path}",
+        f"MAX_CYCLES={max_cycles}",
+    ]
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT)
+    )
+
+    if result.returncode != 0:
+        return f"sim error: {(result.stdout + result.stderr).strip()[:120]}"
+
+    if not CYCLE_COUNT_FILE.exists():
+        return "timeout"   # MAX_CYCLES reached without PROGRAM_END detection
+
+    try:
+        return int(CYCLE_COUNT_FILE.read_text().strip())
+    except ValueError:
+        return "parse error"
+
+
 # ---------------------------------------------------------------------------
 
 def _get_instrs_before(python_cmd: str, source: Path) -> int | str:
-    """
-    Obtiene el numero de instrucciones IR antes de cualquier optimizacion.
-    Lo hace corriendo --O1 y leyendo 'Instructions before' del bloque OPTIMIZER.
-    Esto garantiza que el baseline de O0 usa el mismo contador que O1/O2.
-    """
+    """Get IR instruction count before any optimization by running --O1."""
     cmd = [python_cmd, "-m", "src.compiler.main", str(source), "--O1"]
     result = subprocess.run(
         cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT)
@@ -112,21 +121,25 @@ def _get_instrs_before(python_cmd: str, source: Path) -> int | str:
     return int(m.group(1)) if m else 0
 
 
-def _run_level(python_cmd: str, source: Path, flag: str | None) -> dict | str:
-    """
-    Llama a python3 -m src.compiler.main <source> [--O1|--O2]
-    y retorna el dict de metricas, o un mensaje de error.
+def _run_level(
+    python_cmd: str,
+    source: Path,
+    flag: str | None,
+    hex_path: Path | None = None,
+    max_cycles: int = DEFAULT_MAX_CYCLES,
+) -> dict | str:
+    """Compile source at the given optimization level; return metrics dict or error string.
 
-    Para O0 el baseline se obtiene del 'instrs_before' reportado por --O1,
-    que usa el mismo contador interno que O1/O2 (len(func.body)).
+    If hex_path is provided the source is also compiled to that .hex file and the
+    CPU simulator is run so that cycle_count can be measured.
     """
     if flag is None:
-        # O0: sin optimizacion -> instrs_before == instrs_after, demas metricas = 0
+        # O0: no optimization pass; get instruction count via --O1 probe
         n_or_err = _get_instrs_before(python_cmd, source)
         if isinstance(n_or_err, str):
             return n_or_err
         n = n_or_err
-        return {
+        metrics = {
             "instrs_before": n,
             "instrs_after":  n,
             "instrs_saved":  0,
@@ -139,7 +152,7 @@ def _run_level(python_cmd: str, source: Path, flag: str | None) -> dict | str:
             "elapsed_ms":    0.0,
         }
     else:
-        # O1 / O2
+        # O1 / O2: run compiler with optimization flag
         cmd = [python_cmd, "-m", "src.compiler.main", str(source), flag]
         result = subprocess.run(
             cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT)
@@ -148,36 +161,54 @@ def _run_level(python_cmd: str, source: Path, flag: str | None) -> dict | str:
         if "OPTIMIZER" not in output:
             err = (result.stdout + result.stderr).strip()[:300]
             return f"no OPTIMIZER block in output: {err}"
-        # Extraer solo la seccion OPTIMIZER
         start = output.find("========== OPTIMIZER")
-        opt_block = output[start:]
-        return _parse_optimizer_block(opt_block)
+        metrics = _parse_optimizer_block(output[start:])
+
+    # Optionally compile to hex and measure cycle count via CPU simulation
+    if hex_path is not None:
+        if _compile_to_hex(python_cmd, source, flag, hex_path):
+            metrics["cycle_count"] = _run_simulation(hex_path, max_cycles)
+        else:
+            metrics["cycle_count"] = "compile error"
+    else:
+        metrics["cycle_count"] = ""
+
+    return metrics
 
 
-# ---------------------------------------------------------------------------
-# Main
 # ---------------------------------------------------------------------------
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Genera metricas CSV del pipeline de optimizacion."
+        description="Generate CSV metrics for the optimization pipeline."
     )
     ap.add_argument(
         "--out", default=str(DEFAULT_OUT),
-        help="Ruta del CSV de salida (default: build/metrics.csv)"
+        help="Output CSV path (default: build/metrics.csv)"
     )
     ap.add_argument(
-        "--python", default="python3",
-        help="Interprete Python a usar (default: python3)"
+        "--python", default=".venv/bin/python3",
+        help="Python interpreter to use (default: .venv/bin/python3)"
+    )
+    ap.add_argument(
+        "--sim", action="store_true",
+        help="Also compile to hex and run CPU simulation to measure cycle_count"
+    )
+    ap.add_argument(
+        "--max-cycles", type=int, default=DEFAULT_MAX_CYCLES,
+        help=f"MAX_CYCLES for CPU simulation (default: {DEFAULT_MAX_CYCLES})"
     )
     args = ap.parse_args()
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    if args.sim:
+        BIN_DIR.mkdir(parents=True, exist_ok=True)
+        SIM_DIR.mkdir(parents=True, exist_ok=True)
 
     programs = sorted(OPTS_DIR.glob("*.fr"))
     if not programs:
-        print(f"[WARN] No se encontraron .fr en {OPTS_DIR}", file=sys.stderr)
+        print(f"[WARN] No .fr files found in {OPTS_DIR}", file=sys.stderr)
         sys.exit(1)
 
     levels = [
@@ -197,7 +228,12 @@ def main() -> None:
             label = f"{prog.name:30s}  {level_name}"
             print(f"[{done:>3}/{total}] {label} ... ", end="", flush=True)
 
-            result = _run_level(args.python, prog, flag)
+            hex_path = (
+                BIN_DIR / f"metrics_{prog.stem}_{level_name}.hex"
+                if args.sim else None
+            )
+
+            result = _run_level(args.python, prog, flag, hex_path, args.max_cycles)
 
             if isinstance(result, str):
                 errors += 1
@@ -209,24 +245,27 @@ def main() -> None:
                 row = {"program": prog.name, "level": level_name} | result
                 _add_code_bytes(row)
                 rows.append(row)
+                cycles_str = f"  cycles={result['cycle_count']}" if args.sim else ""
                 print(
                     f"OK  "
-                    f"before={result['instrs_before']:3d}  "
-                    f"after={result['instrs_after']:3d}  "
-                    f"saved={result['instrs_saved']:3d}"
+                    f"ir-inst-before={result['instrs_before']:3d}  "
+                    f"ir-inst-after={result['instrs_after']:3d}  "
+                    f"ir-inst-saved={result['instrs_saved']:3d}"
+                    f"{cycles_str}"
                 )
 
-    # Escribir CSV
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"\nCSV guardado en : {out_path}")
-    print(f"Programas        : {len(programs)}")
-    print(f"Filas generadas  : {len(rows)}")
+    print(f"\nCSV saved to     : {out_path}")
+    print(f"Programs         : {len(programs)}")
+    print(f"Rows generated   : {len(rows)}")
+    if args.sim:
+        print(f"Simulation       : enabled  (MAX_CYCLES={args.max_cycles})")
     if errors:
-        print(f"Errores          : {errors}", file=sys.stderr)
+        print(f"Errors           : {errors}", file=sys.stderr)
         sys.exit(1)
 
 

@@ -37,6 +37,7 @@ MEM_DIR = programs/mems
 PROGRAM ?= $(HEX_DIR)/program.hex
 INITIAL_MEM ?=
 MAX_CYCLES ?= 2000
+CACHE_ENABLE ?= 0
 
 EXAMPLES_DIR = examples
 ADDRESS ?= 0x1000
@@ -73,16 +74,17 @@ sv-cbuild-%: $(CPU_SRC) $(TB_DIR)/tb_%.sv ## Build CPU module '%' with its tb_%.
 sv-run-%: sv-cbuild-%
 	$(VVP) $(SIM_BUILD)/$*.vvp
 
-sv-cpu-exec: $(CPU_SRC) $(TB_DIR)/tb_cpu_program.sv ## Build and run the CPU with PROGRAM=<hex>, optional INITIAL_MEM=<mem>, and MAX_CYCLES=<cycles>; usage: make sv-cpu-exec PROGRAM=... INITIAL_MEM=... MAX_CYCLES=....
+sv-cpu-exec: $(CPU_SRC) $(TB_DIR)/tb_cpu_program.sv ## Build and run the CPU with PROGRAM=<hex>, optional INITIAL_MEM=<mem>, MAX_CYCLES=<cycles>, and CACHE_ENABLE=<0|1>; usage: make sv-cpu-exec PROGRAM=... CACHE_ENABLE=1.
 	@mkdir -p $(SIM_BUILD)
 	$(IVERILOG) $(FLAGS) \
 		-s tb_cpu_program \
-		-Ptb_cpu_program.PROGRAM_FILE=\"$(PROGRAM)\" \
-		-Ptb_cpu_program.INITIAL_MEM=\"$(INITIAL_MEM)\" \
 		-Ptb_cpu_program.MAX_CYCLES=$(MAX_CYCLES) \
+		-Ptb_cpu_program.CACHE_ENABLE=$(CACHE_ENABLE) \
 		-o $(SIM_BUILD)/cpu_program.vvp \
 		$^
-	$(VVP) $(SIM_BUILD)/cpu_program.vvp
+	$(VVP) $(SIM_BUILD)/cpu_program.vvp \
+		+PROGRAM_FILE=$(PROGRAM) \
+		+INITIAL_MEM=$(INITIAL_MEM)
 
 setup: ## Create the Python .venv, upgrade pip, and install dependencies from requirements.txt.
 	python3 -m venv .venv
@@ -212,6 +214,25 @@ verify-roundtrip-tea: ## Build TEA encryption/decryption routines, activate them
 	@echo ""
 	@echo "[3/3] Running standard roundtrip..."
 	@$(MAKE) verify-roundtrip FILE=$(FILE)
+
+verify-cache-modes: ## Run PROGRAM in both cache modes and compare register dumps; usage: make verify-cache-modes PROGRAM=... INITIAL_MEM=... MAX_CYCLES=....
+	@mkdir -p $(SIM_BUILD)
+	@echo "=== Cache Mode Verification ==="
+	@echo "[1/3] Running with CACHE_ENABLE=0..."
+	@$(MAKE) sv-cpu-exec CACHE_ENABLE=0
+	@cp $(SIM_BUILD)/register_dump.txt $(SIM_BUILD)/register_dump_ce0.txt
+	@echo ""
+	@echo "[2/3] Running with CACHE_ENABLE=1..."
+	@$(MAKE) sv-cpu-exec CACHE_ENABLE=1
+	@cp $(SIM_BUILD)/register_dump.txt $(SIM_BUILD)/register_dump_ce1.txt
+	@echo ""
+	@echo "[3/3] Comparing register dumps..."
+	@if cmp -s $(SIM_BUILD)/register_dump_ce0.txt $(SIM_BUILD)/register_dump_ce1.txt ; then \
+	    echo "[PASS] Register files match — both cache modes produce identical results." ; \
+	else \
+	    echo "[FAIL] Register files DIFFER between cache modes." ; \
+	    diff $(SIM_BUILD)/register_dump_ce0.txt $(SIM_BUILD)/register_dump_ce1.txt ; \
+	fi
 
 clear: ## Delete the entire build/ directory and all generated artifacts; usage: make clear.
 	@echo "Cleaning build/ folder..."

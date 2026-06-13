@@ -4,12 +4,16 @@ module cpu_top #(
     parameter int XLEN        = 32,
     parameter int IMEM_DEPTH  = 65536,
     parameter int DMEM_DEPTH  = 65536,
-    parameter PROGRAM_FILE = "programs/hex/program.hex",
-    parameter INITIAL_MEM = ""
+    parameter int CACHE_ENABLE = 1,
+    parameter [1023:0] PROGRAM_FILE = "programs/hex/program.hex",
+    parameter [1023:0] INITIAL_MEM  = ""
 )(
     input  logic clk,
     input  logic rst
 );
+
+    // Password checked against rs1 to grant key-vault access
+    localparam logic [31:0] AUTH_MAGIC_WORD = 32'hDEAD_BEEF;
 
     if_id_t  if_id_reg;
     id_ex_t  id_ex_reg;
@@ -62,6 +66,7 @@ module cpu_top #(
     logic id_u_load;
 
     logic auth_bit;
+    logic [3:0] kv_addr;
 
     logic [6:0] id_funct7;
     funct3_t    id_funct3;
@@ -86,6 +91,24 @@ module cpu_top #(
     logic ex_C;
     logic ex_V;
 
+    logic cache_stall;
+    logic ch_mem_read;
+    assign ch_mem_read = (ex_mem_reg.wb_src == WB_MEM);
+
+    // ── Performance counters ─────────────────────────────────────────────
+    // Cache-hierarchy counters (wired from u_cache outputs)
+    logic [31:0] perf_l1_accesses;
+    logic [31:0] perf_l1_hits;
+    logic [31:0] perf_l1_misses;
+    logic [31:0] perf_l2_hits;
+    logic [31:0] perf_l2_misses;
+    logic [31:0] perf_mm_accesses;
+    logic [31:0] perf_cache_stall_cycles;
+
+    // Pipeline-level counters (computed here)
+    logic [31:0] perf_instr_retired;    // instructions that passed IF→ID without flush
+    logic [31:0] perf_ctrl_stall_cycles; // wasted slots due to branches/jumps
+
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             if_id_reg    <= '0;
@@ -93,6 +116,10 @@ module cpu_top #(
             ex_mem_reg   <= '0;
             mem_wb_reg   <= '0;
             id_ex_funct3 <= '0;
+
+        end else if (cache_stall) begin
+            mem_wb_reg <= '0;
+
         end else begin
 
             if (if_id_write) begin
@@ -159,6 +186,8 @@ module cpu_top #(
             mem_wb_reg.reg_write  <= ex_mem_reg.reg_write;
         end
     end
+
+    assign pc_next_stall = pc_write ? if_pc_next : if_pc_cur;
 
     decoder #(
         .XLEN(XLEN)
@@ -256,6 +285,7 @@ module cpu_top #(
 
         .branch_taken(ex_branch_taken),
         .jump_taken(id_jump_taken),
+        .cache_stall(cache_stall),
 
         .pc_write(pc_write),
         .if_id_write(if_id_write),
@@ -288,8 +318,6 @@ module cpu_top #(
             if_pc_next = if_pc_plus4;
         end
     end
-
-    assign pc_next_stall = pc_write ? if_pc_next : if_pc_cur;
 
     pc #(
         .XLEN(XLEN)
@@ -336,11 +364,15 @@ module cpu_top #(
 
     assign id_vault_we = (id_sec_op == SEC_LDK);
 
+    // SEC_TEA always reads from key slot 0; LDK pipelines the address; otherwise use rs2
+    assign kv_addr = id_ex_reg.vault_we ? id_ex_reg.rs2_data[3:0] :
+                     (id_sec_op == SEC_TEA) ? 4'd0 : id_rs2_data[3:0];
+
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             auth_bit <= 1'b0;
         end else if (id_sec_op == SEC_AUTH) begin
-            if (id_rs1_data == 32'hDEADBEEF) begin
+            if (id_rs1_data == AUTH_MAGIC_WORD) begin
                 auth_bit <= 1'b1;
             end else begin
                 auth_bit <= 1'b0;
@@ -356,7 +388,7 @@ module cpu_top #(
         .clk(clk),
         .vault_we(id_ex_reg.vault_we),
         .auth_en(auth_bit),
-        .addr(id_ex_reg.vault_we ? id_ex_reg.rs2_data[3:0] :(id_sec_op == SEC_TEA ? 4'd0 : id_rs2_data[3:0])),
+        .addr(kv_addr),
         .wdata(id_ex_reg.rs1_data),
         .k_out(id_k_out)
     );
@@ -438,16 +470,27 @@ module cpu_top #(
         end
     end
 
-    data_mem #(
-        .XLEN(XLEN),
-        .DEPTH(DMEM_DEPTH),
-        .INITIAL_MEM(INITIAL_MEM)
-    ) u_dmem (
+    cache_hierarchy #(
+        .XLEN           (XLEN),
+        .MEM_DEPTH      (DMEM_DEPTH),
+        .MEM_INIT_FILE  (INITIAL_MEM)
+    ) u_cache (
         .clk(clk),
-        .mem_write_enable(ex_mem_reg.mem_write),
-        .mem_write_data(ex_mem_reg.rs2_data),
-        .memory_address(ex_mem_reg.alu_result),
-        .mem_read_data(mem_rdata)
+        .rst(rst),
+        .cache_enable(CACHE_ENABLE != 0),
+        .mem_read    (ch_mem_read),
+        .mem_write   (ex_mem_reg.mem_write),
+        .addr        (ex_mem_reg.alu_result),
+        .write_data  (ex_mem_reg.rs2_data),
+        .read_data         (mem_rdata),
+        .cache_stall       (cache_stall),
+        .perf_l1_accesses  (perf_l1_accesses),
+        .perf_l1_hits      (perf_l1_hits),
+        .perf_l1_misses    (perf_l1_misses),
+        .perf_l2_hits      (perf_l2_hits),
+        .perf_l2_misses    (perf_l2_misses),
+        .perf_mm_accesses  (perf_mm_accesses),
+        .perf_stall_cycles (perf_cache_stall_cycles)
     );
 
     always @(*) begin
@@ -458,6 +501,27 @@ module cpu_top #(
             WB_SEC:  wb_data = mem_wb_reg.sec_result;
             default: wb_data = '0;
         endcase
+    end
+
+    // ── Pipeline performance counters ────────────────────────────────────
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            perf_instr_retired    <= '0;
+            perf_ctrl_stall_cycles <= '0;
+        end else begin
+            // Instruction retired: every cycle a real instruction advances IF→ID
+            // (not frozen by cache_stall, not squashed by a flush)
+            if (if_id_write && !if_id_flush && !cache_stall)
+                perf_instr_retired <= perf_instr_retired + 1;
+
+            // Control hazard wasted slots:
+            //   taken branch flushes 2 stages (IF/ID + ID/EX)
+            //   taken jump   flushes 1 stage  (IF/ID only)
+            if (ex_branch_taken && !cache_stall)
+                perf_ctrl_stall_cycles <= perf_ctrl_stall_cycles + 2;
+            else if (id_jump_taken && !cache_stall)
+                perf_ctrl_stall_cycles <= perf_ctrl_stall_cycles + 1;
+        end
     end
 
 endmodule

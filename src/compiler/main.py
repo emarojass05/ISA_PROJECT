@@ -37,6 +37,8 @@ class SemanticTableBuilder(LanguageVisitor):
         self.symbol_table = symbol_table
         self.source_file = source_file
         self.visited_imports = visited_imports if visited_imports is not None else set()
+        # (scope, name) -> int for variables with a known compile-time value
+        self.const_values = {}
 
     def clean_type(self, type_spec_ctx):
         return type_spec_ctx.getText().replace("[", "").replace("]", "")
@@ -122,6 +124,11 @@ class SemanticTableBuilder(LanguageVisitor):
         type_name = self.clean_type(ctx.typeSpec())
         line = ctx.ID().getSymbol().line
         self.symbol_table.declare_variable(name=name, type_name=type_name, line=line)
+        try:
+            val = self.eval_const_expr(ctx.expr())
+            self.const_values[(self.symbol_table.current_scope, name)] = val
+        except (ValueError, Exception):
+            pass
         self.visit(ctx.expr())
         return None
 
@@ -130,6 +137,11 @@ class SemanticTableBuilder(LanguageVisitor):
         type_name = self.clean_type(ctx.typeSpec())
         line = ctx.ID().getSymbol().line
         self.symbol_table.declare_variable(name=name, type_name=type_name, line=line)
+        try:
+            val = self.eval_const_expr(ctx.expr())
+            self.const_values[(self.symbol_table.current_scope, name)] = val
+        except (ValueError, Exception):
+            pass
         self.visit(ctx.expr())
         return None
 
@@ -152,12 +164,129 @@ class SemanticTableBuilder(LanguageVisitor):
         if ctx.arrayLiteral():
             return len(ctx.arrayLiteral().expr())
         if ctx.expr():
-            text = ctx.expr().getText()
             try:
-                return int(text, 0)
-            except ValueError:
+                return self.eval_const_expr(ctx.expr())
+            except (ValueError, Exception):
                 return 1
         return 1
+
+    def eval_const_expr(self, ctx):
+        """Evaluate a compile-time constant expression. Raises ValueError if not reducible."""
+        from src.compiler.generated.LanguageParser import LanguageParser
+
+        if isinstance(ctx, LanguageParser.ExprContext):
+            return self.eval_const_expr(ctx.logicalOrExpr())
+
+        if isinstance(ctx, LanguageParser.LogicalOrExprContext):
+            operands = ctx.logicalAndExpr()
+            if len(operands) == 1:
+                return self.eval_const_expr(operands[0])
+            raise ValueError("compound logical-or not supported in const expr")
+
+        if isinstance(ctx, LanguageParser.LogicalAndExprContext):
+            operands = ctx.bitwiseOrExpr()
+            if len(operands) == 1:
+                return self.eval_const_expr(operands[0])
+            raise ValueError("compound logical-and not supported in const expr")
+
+        if isinstance(ctx, LanguageParser.BitwiseOrExprContext):
+            operands = ctx.bitwiseXorExpr()
+            if len(operands) == 1:
+                return self.eval_const_expr(operands[0])
+            raise ValueError("compound bitwise-or not supported in const expr")
+
+        if isinstance(ctx, LanguageParser.BitwiseXorExprContext):
+            operands = ctx.equalityExpr()
+            if len(operands) == 1:
+                return self.eval_const_expr(operands[0])
+            raise ValueError("compound xor not supported in const expr")
+
+        if isinstance(ctx, LanguageParser.EqualityExprContext):
+            operands = ctx.relationalExpr()
+            if len(operands) == 1:
+                return self.eval_const_expr(operands[0])
+            raise ValueError("equality not supported in const expr")
+
+        if isinstance(ctx, LanguageParser.RelationalExprContext):
+            operands = ctx.shiftExpr()
+            if len(operands) == 1:
+                return self.eval_const_expr(operands[0])
+            raise ValueError("relational not supported in const expr")
+
+        if isinstance(ctx, LanguageParser.ShiftExprContext):
+            operands = ctx.additiveExpr()
+            if len(operands) == 1:
+                return self.eval_const_expr(operands[0])
+            raise ValueError("shift not supported in const expr")
+
+        if isinstance(ctx, LanguageParser.AdditiveExprContext):
+            operands = ctx.multiplicativeExpr()
+            if len(operands) == 1:
+                return self.eval_const_expr(operands[0])
+            result = self.eval_const_expr(operands[0])
+            for i in range(1, len(operands)):
+                op = ctx.getChild(2 * i - 1).getText()
+                rhs = self.eval_const_expr(operands[i])
+                if op == '+':
+                    result += rhs
+                elif op == '-':
+                    result -= rhs
+                else:
+                    raise ValueError(f"unknown additive op '{op}'")
+            return result
+
+        if isinstance(ctx, LanguageParser.MultiplicativeExprContext):
+            operands = ctx.unaryExpr()
+            if len(operands) == 1:
+                return self.eval_const_expr(operands[0])
+            result = self.eval_const_expr(operands[0])
+            for i in range(1, len(operands)):
+                op = ctx.getChild(2 * i - 1).getText()
+                rhs = self.eval_const_expr(operands[i])
+                if op == '*':
+                    result *= rhs
+                elif op == '/':
+                    if rhs == 0:
+                        raise ValueError("division by zero in const expr")
+                    result //= rhs
+                elif op == '%':
+                    if rhs == 0:
+                        raise ValueError("modulo by zero in const expr")
+                    result %= rhs
+                else:
+                    raise ValueError(f"unknown multiplicative op '{op}'")
+            return result
+
+        if isinstance(ctx, LanguageParser.UnaryExprContext):
+            if ctx.primaryExpr():
+                return self.eval_const_expr(ctx.primaryExpr())
+            val = self.eval_const_expr(ctx.unaryExpr())
+            op = ctx.getChild(0).getText()
+            if op == '-':
+                return -val
+            if op == '!':
+                return 0 if val else 1
+            raise ValueError(f"unsupported unary op '{op}'")
+
+        if isinstance(ctx, LanguageParser.PrimaryExprContext):
+            if ctx.INT_LITERAL():
+                return int(ctx.INT_LITERAL().getText(), 10)
+            if ctx.HEX_LITERAL():
+                return int(ctx.HEX_LITERAL().getText(), 16)
+            if ctx.ID():
+                name = ctx.ID().getText()
+                scope_key = (self.symbol_table.current_scope, name)
+                if scope_key in self.const_values:
+                    return self.const_values[scope_key]
+                global_key = ("global", name)
+                if global_key in self.const_values:
+                    return self.const_values[global_key]
+                raise ValueError(f"non-constant variable '{name}'")
+            if ctx.expr():
+                return self.eval_const_expr(ctx.expr())
+            raise ValueError("unsupported primary expression in const expr")
+
+        raise ValueError(f"unsupported expression type {type(ctx).__name__}")
 
     def visitAssignment(self, ctx):
         name = ctx.ID().getText()
@@ -235,6 +364,28 @@ def parse_file(file_path: str):
             print(error)
         return None
     return tree, parser
+
+
+def print_ir_with_blocks(ir_program):
+    """Print IR with visual basic-block boundaries derived from the CFG."""
+    SEP = "━" * 52
+    for ir_func in ir_program.functions:
+        params_str = ", ".join(ir_func.params)
+        print(f"\nfunction [{ir_func.return_type}] {ir_func.name}({params_str}):")
+        cfg = CFG.build_from_function(ir_func)
+        for block in cfg.blocks:
+            pred_ids = [f"B{p.id}" for p in block.predecessors]
+            succ_ids = [f"B{s.id}" for s in block.successors]
+            print(f"  {SEP}")
+            print(f"  ┌─ Block {block.id}   preds={pred_ids}  succs={succ_ids}")
+            for instr in block.instructions:
+                from src.compiler.ir.ir_types import IRLabel
+                if isinstance(instr, IRLabel):
+                    print(f"  │  {instr}:")
+                else:
+                    print(f"  │      {instr}")
+            print(f"  └{'─' * 51}")
+        print()
 
 
 def format_address(address):
@@ -459,8 +610,8 @@ def main():
         if args.verbose:
             print("[INFO] Phase 4: Assembly code generation...")
 
-        # Cuando la IR fue optimizada usamos el IRCodeGenerator como backend.
-        # Sin optimizacion (O0) seguimos con el AsmGenerator basado en AST.
+        # Use IRCodeGenerator when IR was optimized.
+        # Fall back to AST-based AsmGenerator for O0.
         if ir_program is not None and (args.O1 or args.O2):
             if args.verbose:
                 print("[INFO] Phase 4 (IR path): IR -> ASM via IRCodeGenerator...")
@@ -521,8 +672,8 @@ def main():
         print(opt_stats)
 
     if args.ir and ir_program is not None:
-        print("\n========== IR ==========")
-        print(ir_program)
+        print("\n========== IR (con bloques básicos) ==========")
+        print_ir_with_blocks(ir_program)
 
     if args.ir_save and ir_program is not None:
         output_dir = Path("build") / "bin"

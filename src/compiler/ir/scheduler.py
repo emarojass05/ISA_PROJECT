@@ -1,47 +1,3 @@
-"""
-scheduler.py - Reordenamiento de instrucciones (List Scheduling).
-
-Que hace
---------
-Reordena las instrucciones dentro de cada bloque basico para reducir
-hazards de datos RAW (Read After Write), minimizando los ciclos de stall
-que el CPU necesita insertar entre instrucciones dependientes.
-
-Algoritmo: List Scheduling
---------------------------
-1. Construir un grafo de dependencias (DAG) para el bloque.
-2. Calcular la prioridad de cada nodo = longitud del camino critico al final.
-3. Scheduling greedy:
-     - Cola de listos = nodos sin predecesores sin agendar.
-     - En cada paso: elegir el nodo de mayor prioridad de la cola.
-     - Agendarlo, actualizar la cola con nuevos nodos listos.
-
-Grafo de dependencias
----------------------
-Se agrega un arco de instruccion i a instruccion j (j debe ir despues de i)
-cuando existe alguna de estas dependencias:
-
-  RAW (Read After Write):   i define X, j usa X       -> real
-  WAR (Write After Read):   i usa X,   j define X     -> no mover j antes de i
-  WAW (Write After Write):  i define X, j define X    -> mantener orden
-  MEM (memoria):            cualquier par load/store  -> orden conservador
-  BARRIER (IRCall):         barrera de dos lados, nada cruza un call
-
-Restricciones fijas
--------------------
-  - IRLabel al inicio del bloque SIEMPRE queda en posicion 0.
-  - Terminadores (IRGoto, IRIfTrue, IRIfFalse, IRReturn) SIEMPRE al final.
-  - IRCall es barrera de dos lados: todo lo anterior debe precederlo,
-    y todo lo posterior debe ir despues.
-
-Interfaz publica
-----------------
-    SchedulerStats                  metricas del pass
-    schedule_block(block)           reordena un BasicBlock in-place
-    schedule_function(ir_func)      aplica a todos los bloques de una funcion
-    schedule_program(ir_program)    aplica a todas las funciones
-"""
-
 from __future__ import annotations
 
 import copy
@@ -50,14 +6,12 @@ from typing import Dict, List, Set, Tuple
 
 from .ir_types import (
     IRInstruction, IRLabel, IRGoto, IRIfTrue, IRIfFalse,
-    IRReturn, IRStore, IRLoad, IRCall,
+    IRReturn, IRStore, IRLoad, IRCall, IRParam,
 )
 from .ir_program import IRFunction, IRProgram
 from .cfg import CFG
 
 
-# ---------------------------------------------------------------------------
-# Clasificadores de instrucciones
 # ---------------------------------------------------------------------------
 
 def _is_label(i: IRInstruction) -> bool:
@@ -70,26 +24,15 @@ def _is_memory(i: IRInstruction) -> bool:
     return isinstance(i, (IRLoad, IRStore))
 
 def _is_barrier(i: IRInstruction) -> bool:
-    """IRCall actua como barrera: nada puede cruzarla en ningun sentido."""
+    """IRCall is a two-sided barrier: nothing may cross it."""
     return isinstance(i, IRCall)
 
 
 # ---------------------------------------------------------------------------
-# Nodo del grafo de dependencias
-# ---------------------------------------------------------------------------
 
 @dataclass
 class DepNode:
-    """
-    Representa una instruccion en el DAG de dependencias.
-
-    Atributos:
-        idx          Posicion original en el bloque (para desempate).
-        instr        La instruccion IR.
-        succs        Indices de nodos que deben ir DESPUES de este.
-        preds_count  Numero de predecesores aun no agendados (in-degree).
-        priority     Longitud del camino critico desde este nodo al final.
-    """
+    """One instruction in the dependency DAG."""
     idx:         int
     instr:       IRInstruction
     succs:       List[int] = field(default_factory=list)
@@ -98,15 +41,9 @@ class DepNode:
 
 
 # ---------------------------------------------------------------------------
-# Construccion del DAG de dependencias
-# ---------------------------------------------------------------------------
 
 def _build_dag(instrs: List[IRInstruction]) -> List[DepNode]:
-    """
-    Construye el DAG de dependencias para una lista de instrucciones.
-
-    Retorna una lista de DepNode con succs y preds_count populados.
-    """
+    """Build the dependency DAG for a list of instructions."""
     n = len(instrs)
     nodes = [DepNode(idx=i, instr=instrs[i]) for i in range(n)]
 
@@ -114,6 +51,7 @@ def _build_dag(instrs: List[IRInstruction]) -> List[DepNode]:
     last_uses: Dict[str, List[int]] = {}
     last_mem: int = -1
     last_barrier: int = -1
+    last_param: int = -1   # enforce IRParam ordering within each call sequence
 
     def add_edge(src: int, dst: int) -> None:
         if dst not in nodes[src].succs:
@@ -124,45 +62,49 @@ def _build_dag(instrs: List[IRInstruction]) -> List[DepNode]:
         uses_j = instr.uses()
         defs_j = instr.defs()
 
-        # Barrera hacia adelante: todo despues de la ultima barrera va despues
+        # Forward barrier: everything after last barrier depends on it
         if last_barrier >= 0 and j != last_barrier:
             add_edge(last_barrier, j)
 
-        # Barrera hacia atras: si j ES una barrera (IRCall), todas las
-        # instrucciones anteriores deben precederla.
-        # Esto garantiza que los params no se muevan despues del call.
+        # Backward barrier: if j is IRCall, all prior instructions precede it
         if _is_barrier(instr):
             for k in range(j):
                 add_edge(k, j)
 
-        # RAW: j usa variables definidas por instrucciones anteriores
+        # RAW: j reads a variable defined by an earlier instruction
         for var in uses_j:
             if var in last_def:
                 add_edge(last_def[var], j)
 
-        # WAR: j define variables usadas por instrucciones anteriores
+        # WAR: j defines a variable read by earlier instructions
         for var in defs_j:
             if var in last_uses:
                 for k in last_uses[var]:
                     if k != j:
                         add_edge(k, j)
 
-        # WAW: j define variables ya definidas antes
+        # WAW: j defines a variable already defined
         for var in defs_j:
             if var in last_def and last_def[var] != j:
                 add_edge(last_def[var], j)
 
-        # MEM: orden conservador entre accesos a memoria
+        # MEM: conservative ordering between all memory accesses
         if _is_memory(instr):
             if last_mem >= 0:
                 add_edge(last_mem, j)
             last_mem = j
 
-        # Actualizar barrera
+        # Preserve IRParam order: each param must follow the previous one
+        if isinstance(instr, IRParam):
+            if last_param >= 0:
+                add_edge(last_param, j)
+            last_param = j
+        elif _is_barrier(instr):
+            last_param = -1   # reset across call boundaries
+
         if _is_barrier(instr):
             last_barrier = j
 
-        # Actualizar last_def y last_uses
         for var in defs_j:
             last_def[var] = j
         for var in uses_j:
@@ -174,13 +116,9 @@ def _build_dag(instrs: List[IRInstruction]) -> List[DepNode]:
 
 
 # ---------------------------------------------------------------------------
-# Calculo de prioridades (altura en el DAG)
-# ---------------------------------------------------------------------------
 
 def _compute_priorities(nodes: List[DepNode]) -> None:
-    """
-    Calcula la prioridad de cada nodo = longitud del camino critico
-    desde ese nodo hasta un nodo hoja (sin sucesores).
+    """Compute critical-path priority for each node.
 
     priority[i] = 1 + max(priority[succ] for succ in succs[i])
     """
@@ -201,16 +139,9 @@ def _compute_priorities(nodes: List[DepNode]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# List Scheduling
-# ---------------------------------------------------------------------------
 
 def _list_schedule(nodes: List[DepNode]) -> List[IRInstruction]:
-    """
-    Ejecuta el algoritmo de list scheduling sobre el DAG.
-
-    Criterio de seleccion: mayor prioridad; en empate, mayor idx original
-    (favorece instrucciones independientes sobre recien desbloqueadas).
-    """
+    """Run list scheduling: pick highest-priority ready node at each step."""
     pending = [node.preds_count for node in nodes]
     ready = [i for i, p in enumerate(pending) if p == 0]
     scheduled: List[IRInstruction] = []
@@ -230,19 +161,14 @@ def _list_schedule(nodes: List[DepNode]) -> List[IRInstruction]:
 
 
 # ---------------------------------------------------------------------------
-# Scheduling de un bloque basico
-# ---------------------------------------------------------------------------
 
 def schedule_block(block) -> int:
-    """
-    Reordena las instrucciones de un BasicBlock usando list scheduling.
+    """Reorder one BasicBlock with list scheduling; return instructions moved.
 
-    Restricciones fijas:
-      - El label inicial (si existe) se fija en posicion 0.
-      - Los terminadores se fijan al final.
-      - El cuerpo schedulable es todo lo que queda en el medio.
-
-    Retorna el numero de instrucciones movidas respecto al orden original.
+    Fixed constraints:
+      - Initial label (if any) stays at position 0.
+      - Terminators stay at the end.
+      - Everything in between is schedulable.
     """
     instrs = block.instructions
     if len(instrs) <= 1:
@@ -280,27 +206,19 @@ def schedule_block(block) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Metricas
-# ---------------------------------------------------------------------------
 
 @dataclass
 class SchedulerStats:
-    """Metricas del pass de instruction scheduling."""
+    """Metrics for the instruction scheduling pass."""
     blocks_scheduled: int = 0
     instrs_moved:     int = 0
     blocks_changed:   int = 0
 
 
 # ---------------------------------------------------------------------------
-# Interfaces publicas
-# ---------------------------------------------------------------------------
 
 def schedule_function(ir_func: IRFunction) -> SchedulerStats:
-    """
-    Aplica list scheduling a todos los bloques basicos de una funcion.
-
-    Modifica ir_func.body in-place.
-    """
+    """Apply list scheduling to all basic blocks of a function."""
     stats = SchedulerStats()
     cfg = CFG.build_from_function(ir_func)
 
@@ -320,9 +238,7 @@ def schedule_function(ir_func: IRFunction) -> SchedulerStats:
 
 
 def schedule_program(ir_program: IRProgram) -> SchedulerStats:
-    """
-    Aplica instruction scheduling a todas las funciones del programa.
-    """
+    """Apply instruction scheduling to all functions in the program."""
     total = SchedulerStats()
     for func in ir_program.functions:
         s = schedule_function(func)

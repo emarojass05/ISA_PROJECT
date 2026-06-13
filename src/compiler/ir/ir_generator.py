@@ -1,19 +1,3 @@
-"""
-ir_generator.py — Visitor que recorre el AST y genera IR de tres direcciones.
-
-Diferencias clave con AsmGenerator:
-  - No hay registros físicos: usa temporales abstractos (_t0, _t1, ...)
-  - No hay manejo de frames ni calling conventions
-  - Las variables se nombran por su nombre en la tabla de símbolos
-  - El resultado es un IRProgram listo para que los passes de optimización trabajen
-
-Convenciones:
-  - Temporales del compilador: _t0, _t1, _t2, ...
-  - Variables locales/parámetros: se usan por su nombre (n, acc, i, ...)
-  - Variables globales: se prefijan con @ en IRLoad/IRStore (@contador)
-  - El backend (ir → asm) traduce estas convenciones a ensamblador real
-"""
-
 from __future__ import annotations
 
 from src.compiler.generated.LanguageVisitor import LanguageVisitor
@@ -26,8 +10,6 @@ from src.compiler.ir.ir_types import (
 from src.compiler.ir.ir_program import IRFunction, IRProgram
 
 
-# ---------------------------------------------------------------------------
-# Tabla de operadores fuente → BinOp
 # ---------------------------------------------------------------------------
 
 _OP_MAP: dict[str, BinOp] = {
@@ -51,31 +33,22 @@ _OP_MAP: dict[str, BinOp] = {
     "||": BinOp.OR,
 }
 
-WORD_SIZE = 4  # bytes por palabra, igual que la ISA GAEM
+WORD_SIZE = 4  # bytes per word (GAEM ISA)
 
 
-# ---------------------------------------------------------------------------
-# IRGenerator
 # ---------------------------------------------------------------------------
 
 class IRGenerator(LanguageVisitor):
-    """
-    Recorre el AST producido por ANTLR4 y genera un IRProgram.
-
-    Uso:
-        gen = IRGenerator(symbol_table)
-        gen.visit(tree)
-        ir_program = gen.get_ir()
-    """
+    """AST visitor that builds an IRProgram from the ANTLR4 parse tree."""
 
     def __init__(self, symbol_table, source_file=None, visited_imports=None):
         super().__init__()
         self.symbol_table    = symbol_table
         self.ir_program      = IRProgram()
-        self.current_func    = None          # IRFunction activa
+        self.current_func    = None          # active IRFunction
         self.temp_counter    = 0
         self.label_counter   = 0
-        self.loop_stack      = []            # para continue/break
+        self.loop_stack      = []            # for continue/break targets
         self.source_file     = source_file
         self.visited_imports = visited_imports if visited_imports is not None else set()
         self.imported_trees  = []
@@ -83,8 +56,6 @@ class IRGenerator(LanguageVisitor):
     def get_ir(self) -> IRProgram:
         return self.ir_program
 
-    # -----------------------------------------------------------------------
-    # Helpers internos
     # -----------------------------------------------------------------------
 
     def _new_temp(self) -> str:
@@ -113,48 +84,38 @@ class IRGenerator(LanguageVisitor):
         return symbol.get("is_local", False) or symbol.get("kind") == "parameter"
 
     def _emit_load(self, dest: str, symbol: dict) -> None:
-        """
-        Carga el valor de una variable en el temporal 'dest'.
-        - Local/parámetro  →  IRCopy(dest, nombre)
-        - Global           →  IRLoad(dest, "@nombre", 0)
-        """
+        """Load a variable value into dest; local -> IRCopy, global -> IRLoad."""
         if self._is_local(symbol):
             self._emit(IRCopy(dest, symbol["name"]))
         else:
             self._emit(IRLoad(dest, f"@{symbol['name']}", 0))
 
     def _emit_store(self, src: str, symbol: dict) -> None:
-        """
-        Guarda el valor en 'src' dentro de la variable.
-        - Local/parámetro  →  IRCopy(nombre, src)
-        - Global           →  IRStore("@nombre", 0, src)
-        """
+        """Store src into a variable; local -> IRCopy, global -> IRStore."""
         if self._is_local(symbol):
             self._emit(IRCopy(symbol["name"], src))
         else:
             self._emit(IRStore(f"@{symbol['name']}", 0, src))
 
     # -----------------------------------------------------------------------
-    # Programa e imports
-    # -----------------------------------------------------------------------
 
     def visitProgram(self, ctx):
-        # 1) Procesar imports primero
+        # 1) Process imports first
         for imp in ctx.importDecl():
             self.visit(imp)
 
-        # 2) Declaraciones globales (variables/arrays, no funciones)
+        # 2) Global declarations (variables/arrays, not functions)
         for decl in ctx.declaration():
             if decl.functionDecl() is None:
                 self.visit(decl)
 
-        # 3) Funciones importadas
+        # 3) Imported functions
         for tree in self.imported_trees:
             for decl in tree.declaration():
                 if decl.functionDecl() is not None:
                     self.visit(decl)
 
-        # 4) Funciones locales
+        # 4) Local functions
         for decl in ctx.declaration():
             if decl.functionDecl() is not None:
                 self.visit(decl)
@@ -204,8 +165,6 @@ class IRGenerator(LanguageVisitor):
         return None
 
     # -----------------------------------------------------------------------
-    # Declaración de funciones
-    # -----------------------------------------------------------------------
 
     def visitFunctionDecl(self, ctx):
         func_name   = ctx.ID().getText()
@@ -216,7 +175,7 @@ class IRGenerator(LanguageVisitor):
 
         ir_func = IRFunction(name=func_name, params=params, return_type=return_type)
 
-        # Guardamos el contexto previo para soportar funciones anidadas (edge case)
+        # Save context to support nested functions (edge case)
         prev_func        = self.current_func
         self.current_func = ir_func
 
@@ -232,11 +191,9 @@ class IRGenerator(LanguageVisitor):
         return None
 
     # -----------------------------------------------------------------------
-    # Declaraciones de variables y arrays
-    # -----------------------------------------------------------------------
 
     def visitVarDecl(self, ctx):
-        # Variables globales no generan IR: sus valores los maneja el backend
+        # Global variables do not generate IR; the backend handles them
         if self.current_func is None:
             return None
         name   = ctx.ID().getText()
@@ -246,7 +203,7 @@ class IRGenerator(LanguageVisitor):
         return None
 
     def visitVarDeclNoSemi(self, ctx):
-        # Variables globales no generan IR: sus valores los maneja el backend
+        # Global variables do not generate IR; the backend handles them
         if self.current_func is None:
             return None
         name   = ctx.ID().getText()
@@ -256,7 +213,7 @@ class IRGenerator(LanguageVisitor):
         return None
 
     def visitArrayDecl(self, ctx):
-        # Arrays globales no generan IR: sus valores los maneja el backend
+        # Global arrays do not generate IR; the backend handles them
         if self.current_func is None:
             return None
         name   = ctx.ID().getText()
@@ -270,8 +227,6 @@ class IRGenerator(LanguageVisitor):
 
         return None
 
-    # -----------------------------------------------------------------------
-    # Asignaciones
     # -----------------------------------------------------------------------
 
     def visitAssignment(self, ctx):
@@ -330,8 +285,6 @@ class IRGenerator(LanguageVisitor):
         self._emit(IRStore(addr, 0, val))
         return None
 
-    # -----------------------------------------------------------------------
-    # Control de flujo
     # -----------------------------------------------------------------------
 
     def visitIfStmt(self, ctx):
@@ -399,7 +352,7 @@ class IRGenerator(LanguageVisitor):
     def visitContinueStmt(self, ctx):
         line = ctx.SUIVRE().getSymbol().line
         if not self.loop_stack:
-            raise Exception(f"Error line {line}: 'suivre' usado fuera de loop")
+            raise Exception(f"Error line {line}: 'suivre' used outside a loop")
         self._emit(IRGoto(self.loop_stack[-1]["continue"]))
         return None
 
@@ -415,8 +368,6 @@ class IRGenerator(LanguageVisitor):
         self.visit(ctx.expr())
         return None
 
-    # -----------------------------------------------------------------------
-    # Expresiones — retornan el nombre del temporal con el resultado
     # -----------------------------------------------------------------------
 
     def visitExpr(self, ctx):
@@ -450,10 +401,7 @@ class IRGenerator(LanguageVisitor):
         return self._binop_chain(ctx)
 
     def _binop_chain(self, ctx) -> str:
-        """
-        Maneja expresiones binarias encadenadas izquierda a derecha.
-        Ejemplo: a + b + c  →  _t0 = a + b;  _t1 = _t0 + c
-        """
+        """Handle left-associative binary expressions: a + b + c -> t0=a+b; t1=t0+c."""
         result = self.visit(ctx.getChild(0))
         i = 1
         while i < ctx.getChildCount():
@@ -461,7 +409,7 @@ class IRGenerator(LanguageVisitor):
             right  = self.visit(ctx.getChild(i + 1))
 
             if op_str not in _OP_MAP:
-                raise Exception(f"Operador no soportado en IR: '{op_str}'")
+                raise Exception(f"Unsupported operator in IR: '{op_str}'")
 
             temp = self._new_temp()
             self._emit(IRBinOp(temp, result, _OP_MAP[op_str], right))
@@ -487,20 +435,20 @@ class IRGenerator(LanguageVisitor):
         return operand
 
     def visitPrimaryExpr(self, ctx):
-        # Literal entero decimal
+        # Integer literal
         if ctx.INT_LITERAL():
             return ctx.INT_LITERAL().getText()
 
-        # Literal hex
+        # Hex literal
         if ctx.HEX_LITERAL():
             return ctx.HEX_LITERAL().getText()
 
-        # Literal booleano: vrai=1, faux=0
+        # Boolean literal: vrai=1, faux=0
         if ctx.BOOL_LITERAL():
             return "1" if ctx.BOOL_LITERAL().getText() == "vrai" else "0"
 
         if ctx.STRING_LITERAL():
-            raise Exception("String literals no soportados en generación de IR")
+            raise Exception("String literals are not supported in IR generation")
 
         if ctx.functionCall():
             return self.visit(ctx.functionCall())
@@ -513,13 +461,13 @@ class IRGenerator(LanguageVisitor):
             symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
 
             if symbol["kind"] == "array":
-                # Retorna la dirección base del array como temporal
+                # Return array base address as a temporary
                 temp = self._new_temp()
                 base = name if self._is_local(symbol) else f"@{name}"
                 self._emit(IRCopy(temp, base))
                 return temp
 
-            # Variable escalar: carga en temporal
+            # Scalar variable: load into a temporary
             temp = self._new_temp()
             self._emit_load(temp, symbol)
             return temp
@@ -527,20 +475,20 @@ class IRGenerator(LanguageVisitor):
         if ctx.expr():
             return self.visit(ctx.expr())
 
-        raise Exception(f"Expresión primaria no soportada: '{ctx.getText()}'")
+        raise Exception(f"Unsupported primary expression: '{ctx.getText()}'")
 
     def visitFunctionCall(self, ctx):
         func_name = ctx.ID().getText()
         args      = ctx.args().expr() if ctx.args() else []
 
-        # Evaluar todos los argumentos primero
+        # Evaluate all arguments first
         arg_temps = [self.visit(arg) for arg in args]
 
-        # Emitir un IRParam por cada argumento
+        # Emit one IRParam per argument
         for arg_temp in arg_temps:
             self._emit(IRParam(arg_temp))
 
-        # Emitir el IRCall y capturar el resultado
+        # Emit the IRCall and capture its result
         result = self._new_temp()
         self._emit(IRCall(result, func_name, len(arg_temps)))
         return result
@@ -552,25 +500,23 @@ class IRGenerator(LanguageVisitor):
         return result
 
     def _emit_indexed_address(self, ctx) -> str:
-        """
-        Calcula la dirección de un acceso indexado arr@(i) y retorna
-        el nombre del temporal que contiene esa dirección.
+        """Compute address for arr@(i); return temporal holding the address.
 
-        Fórmula: addr = base + index * WORD_SIZE
+        Formula: addr = base + index * WORD_SIZE
         """
         name   = ctx.ID().getText()
         symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
 
-        # Dirección base
+        # Base address
         addr = self._new_temp()
         if symbol["kind"] == "array":
             base = name if self._is_local(symbol) else f"@{name}"
             self._emit(IRCopy(addr, base))
         else:
-            # Puntero: cargar su valor (que es la dirección)
+            # Pointer: load its value (which is the address)
             self._emit_load(addr, symbol)
 
-        # Sumar cada dimension de indice
+        # Add each index dimension
         for expr_ctx in ctx.expr():
             idx    = self.visit(expr_ctx)
             scaled = self._new_temp()

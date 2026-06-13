@@ -1,29 +1,3 @@
-"""
-cfg.py - Control Flow Graph (CFG) construido a partir de una IRFunction.
-
-Algoritmo (Dragon Book, Sec. 8.4):
-
-  PASO 1 - Identificar lideres:
-    a) La primera instruccion de la funcion siempre es lider.
-    b) Toda instruccion IRLabel que es el destino de algun salto
-       (IRGoto / IRIfTrue / IRIfFalse) es lider.
-    c) Toda instruccion que sigue inmediatamente a un salto o a un
-       IRReturn es lider (si existe).
-
-  PASO 2 - Partir en bloques:
-    Cada lider inicia un bloque basico que se extiende hasta justo
-    antes del siguiente lider (o hasta el final de la funcion).
-
-  PASO 3 - Construir aristas:
-    Se examina la ultima instruccion de cada bloque:
-      - IRReturn      -> sin sucesor.
-      - IRGoto t      -> arista al bloque cuyo lider tiene etiqueta t.
-      - IRIfTrue  c t -> arista al bloque de etiqueta t
-                         + arista fall-through al bloque siguiente.
-      - IRIfFalse c t -> idem IRIfTrue.
-      - cualquier otra-> fall-through al bloque siguiente.
-"""
-
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -37,87 +11,67 @@ from .basic_block import BasicBlock
 
 
 # ---------------------------------------------------------------------------
-# Helpers internos
-# ---------------------------------------------------------------------------
 
 def _is_jump(instr: IRInstruction) -> bool:
-    """True si la instruccion transfiere el control (salto o return)."""
+    """True if the instruction transfers control (jump or return)."""
     return isinstance(instr, (IRGoto, IRIfTrue, IRIfFalse, IRReturn))
 
 
 def _jump_targets(instr: IRInstruction) -> List[str]:
-    """Retorna las etiquetas destino de un salto (lista vacia si no es salto)."""
+    """Return the target labels of a jump (empty list if not a jump)."""
     if isinstance(instr, (IRGoto, IRIfTrue, IRIfFalse)):
         return [instr.target]
     return []
 
 
 # ---------------------------------------------------------------------------
-# Clase CFG
-# ---------------------------------------------------------------------------
 
 @dataclass
 class CFG:
-    """
-    Grafo de flujo de control de una funcion IR.
-
-    Atributos:
-        func_name  Nombre de la funcion de origen.
-        blocks     Lista de BasicBlock en orden de aparicion en el codigo.
-                   blocks[0] es siempre el bloque de entrada (entry).
-    """
+    """Control flow graph of an IR function."""
     func_name: str
     blocks:    List[BasicBlock] = field(default_factory=list)
 
     # ------------------------------------------------------------------
-    # Propiedades
-    # ------------------------------------------------------------------
 
     @property
     def entry(self) -> Optional[BasicBlock]:
-        """Bloque de entrada (primero). None si el CFG esta vacio."""
+        """Entry block (first). None if the CFG is empty."""
         return self.blocks[0] if self.blocks else None
 
-    # ------------------------------------------------------------------
-    # Constructor principal
     # ------------------------------------------------------------------
 
     @classmethod
     def build_from_function(cls, ir_func: IRFunction) -> "CFG":
-        """
-        Construye el CFG a partir de una IRFunction con la lista plana de
-        instrucciones en ir_func.body.
-
-        Retorna un CFG con los bloques y aristas correctamente enlazados.
-        """
+        """Build CFG from an IRFunction using the Dragon Book algorithm."""
         instructions: List[IRInstruction] = ir_func.body
         cfg = cls(func_name=ir_func.name)
 
         if not instructions:
             return cfg
 
-        # ---- Paso 1: recopilar destinos de todos los saltos ----
+        # Step 1: collect jump target labels
         jump_target_labels: set[str] = set()
         for instr in instructions:
             for lbl in _jump_targets(instr):
                 jump_target_labels.add(lbl)
 
-        # ---- Paso 1: identificar indices de instrucciones lideres ----
-        leaders: set[int] = {0}   # la primera instruccion siempre es lider
+        # Step 1: identify leader indices
+        leaders: set[int] = {0}   # first instruction is always a leader
 
         for i, instr in enumerate(instructions):
-            # La instruccion siguiente a cualquier salto/return es lider
+            # Instruction following any jump/return is a leader
             if _is_jump(instr) and i + 1 < len(instructions):
                 leaders.add(i + 1)
-            # Las IRLabel que son destino de algun salto son lideres
+            # IRLabel targets of jumps are leaders
             if isinstance(instr, IRLabel) and instr.name in jump_target_labels:
                 leaders.add(i)
 
         sorted_leaders = sorted(leaders)
 
-        # ---- Paso 2: crear bloques basicos ----
+        # Step 2: create basic blocks
         for block_id, leader_idx in enumerate(sorted_leaders):
-            # El bloque termina justo antes del siguiente lider
+            # Block ends just before the next leader
             if block_id + 1 < len(sorted_leaders):
                 end_idx = sorted_leaders[block_id + 1]
             else:
@@ -128,14 +82,14 @@ class CFG:
                 block.append(instr)
             cfg.blocks.append(block)
 
-        # ---- Paso 3a: construir mapa label -> bloque ----
+        # Step 3a: build label -> block map
         label_to_block: Dict[str, BasicBlock] = {}
         for block in cfg.blocks:
             for instr in block.instructions:
                 if isinstance(instr, IRLabel):
                     label_to_block[instr.name] = block
 
-        # ---- Paso 3b: agregar aristas ----
+        # Step 3b: add edges
         for i, block in enumerate(cfg.blocks):
             if block.is_empty():
                 continue
@@ -144,8 +98,7 @@ class CFG:
             next_block = cfg.blocks[i + 1] if i + 1 < len(cfg.blocks) else None
 
             if isinstance(last, IRReturn):
-                # Sin sucesor: fin del camino de ejecucion
-                pass
+                pass  # no successor
 
             elif isinstance(last, IRGoto):
                 target = label_to_block.get(last.target)
@@ -153,50 +106,44 @@ class CFG:
                     cfg._add_edge(block, target)
 
             elif isinstance(last, (IRIfTrue, IRIfFalse)):
-                # Arista al destino del salto condicional
+                # Edge to the conditional jump target
                 target = label_to_block.get(last.target)
                 if target is not None:
                     cfg._add_edge(block, target)
-                # Arista fall-through al bloque siguiente
+                # Fall-through edge to the next block
                 if next_block is not None:
                     cfg._add_edge(block, next_block)
 
             else:
-                # Cualquier otro caso: caida al siguiente bloque
+                # Fall through to the next block
                 if next_block is not None:
                     cfg._add_edge(block, next_block)
 
         return cfg
 
     # ------------------------------------------------------------------
-    # Operaciones internas
-    # ------------------------------------------------------------------
 
     def _add_edge(self, src: BasicBlock, dst: BasicBlock) -> None:
-        """Agrega la arista dirigida src -> dst (sin duplicados)."""
+        """Add directed edge src -> dst (no duplicates)."""
         if dst not in src.successors:
             src.successors.append(dst)
         if src not in dst.predecessors:
             dst.predecessors.append(src)
 
     # ------------------------------------------------------------------
-    # Utilidades de consulta
-    # ------------------------------------------------------------------
 
     def get_block_by_label(self, label_name: str) -> Optional[BasicBlock]:
-        """Busca el bloque cuya primera instruccion es IRLabel(label_name)."""
+        """Find the block whose first instruction is IRLabel(label_name)."""
         for block in self.blocks:
             if block.label() == label_name:
                 return block
         return None
 
     # ------------------------------------------------------------------
-    # Impresion
-    # ------------------------------------------------------------------
 
     def __str__(self) -> str:
         lines = [
-            f"CFG [{self.func_name}]  ({len(self.blocks)} bloques)",
+            f"CFG [{self.func_name}]  ({len(self.blocks)} blocks)",
             "=" * 52,
         ]
         for block in self.blocks:
@@ -205,10 +152,7 @@ class CFG:
         return "\n".join(lines)
 
     def dot(self) -> str:
-        """
-        Genera representacion en formato DOT (Graphviz) del CFG.
-        Para visualizar: echo '<salida>' | dot -Tpng -o cfg.png
-        """
+        """Generate a Graphviz DOT representation of the CFG."""
         lines = [f'digraph "{self.func_name}" {{']
         lines.append('  node [shape=box fontname="Courier" fontsize=9];')
         for block in self.blocks:
@@ -222,7 +166,7 @@ class CFG:
                     .replace(">", "\\>")
                 )
                 body_lines.append(s)
-            body = "\\n".join(body_lines) or "(vacio)"
+            body = "\\n".join(body_lines) or "(empty)"
             node_label = f"{block.label()}\\n{body}"
             lines.append(f'  B{block.id} [label="{node_label}"];')
         for block in self.blocks:

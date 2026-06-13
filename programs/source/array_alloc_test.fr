@@ -5,10 +5,13 @@ fonc [void] num_1_n([int] n, [int] *lista) {
     ret;
 }
 
+$ Test array sizes from variable
 fonc [void] main() {
-    [int] *lista1(10);
-    [int] *lista2(100);
-    num_1_n(10, lista1);
-    num_1_n(100, lista2);
+    [int] a = 10;
+    [int] b = 100;
+    [int] *lista1(a);
+    [int] *lista2(b);
+    num_1_n(a, lista1);
+    num_1_n(b, lista2);
     ret;
 }

@@ -1,37 +1,3 @@
-"""
-optimizer.py - Pipeline de optimizacion IR.
-
-Que hace
---------
-Encadena todos los passes de optimizacion sobre un IRProgram en el orden
-correcto, segun el nivel de optimizacion solicitado.
-
-Niveles de optimizacion
------------------------
-  O0  Sin optimizacion (pass-through).
-  O1  Optimizaciones conservadoras:
-        1. Rename  - elimina dependencias WAR/WAW falsas
-        2. DCE     - elimina codigo muerto
-  O2  Optimizaciones agresivas (todo O1 mas):
-        3. Loop unrolling - despliega loops de trip-count conocido
-        4. Scheduling     - reordena instrucciones para reducir RAW hazards
-
-Cadena de passes
-----------------
-  rename -> DCE -> [loop_unroll -> DCE -> rename] -> schedule
-
-  El DCE despues del unrolling limpia variables temporales extra generadas
-  por el unrolling. El rename antes del scheduling maximiza los movimientos
-  que el scheduler puede hacer.
-
-Interfaz publica
-----------------
-  OptimizationLevel              enum O0 / O1 / O2
-  OptimizerStats                 metricas agregadas de todos los passes
-  optimize_program(prog, level)  aplica el pipeline y retorna stats
-  optimize_function(func, level) aplica el pipeline a una sola funcion
-"""
-
 from __future__ import annotations
 
 import time
@@ -44,40 +10,34 @@ from .renamer import rename_program, rename_function, RenamerState
 from .dce import dce_program, eliminate_dead_code, DCEStats
 from .loop_unroller import unroll_program, unroll_function, UnrollStats
 from .scheduler import schedule_program, schedule_function, SchedulerStats
+from .copy_propagation import propagate_copies_program, propagate_copies_function
 
 
-# ---------------------------------------------------------------------------
-# Nivel de optimizacion
 # ---------------------------------------------------------------------------
 
 class OptimizationLevel(Enum):
-    O0 = 0   # Sin optimizacion
-    O1 = 1   # Rename + DCE
-    O2 = 2   # Rename + DCE + Loop unroll + DCE + Rename + Schedule
+    O0 = 0   # no optimization
+    O1 = 1   # rename + DCE
+    O2 = 2   # rename + DCE + loop unroll + DCE + rename + schedule
 
 
-# ---------------------------------------------------------------------------
-# Metricas del pipeline
 # ---------------------------------------------------------------------------
 
 @dataclass
 class OptimizerStats:
-    """Metricas agregadas del pipeline de optimizacion."""
+    """Aggregated metrics for the full optimization pipeline."""
     level: OptimizationLevel = OptimizationLevel.O0
 
-    # Conteos globales de instrucciones
     instrs_before: int = 0
     instrs_after:  int = 0
 
-    # Stats por pass (None si el pass no se ejecuto)
     rename_vars_created:   int = 0
-    dce_instrs_removed:    int = 0          # total entre todas las pasadas DCE
+    dce_instrs_removed:    int = 0
     unroll_loops_expanded: int = 0
     unroll_instrs_added:   int = 0
     sched_instrs_moved:    int = 0
     sched_blocks_changed:  int = 0
 
-    # Tiempo de compilacion del pipeline
     elapsed_ms: float = 0.0
 
     @property
@@ -108,8 +68,6 @@ class OptimizerStats:
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _count_instrs(ir_program: IRProgram) -> int:
     return sum(len(f.body) for f in ir_program.functions)
@@ -120,17 +78,11 @@ def _count_instrs_func(ir_func: IRFunction) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Pipeline por funcion
-# ---------------------------------------------------------------------------
 
 def optimize_function(ir_func: IRFunction,
                       level: OptimizationLevel = OptimizationLevel.O1
                       ) -> OptimizerStats:
-    """
-    Aplica el pipeline de optimizacion a una sola funcion.
-
-    Util para pruebas unitarias o compilacion funcion por funcion.
-    """
+    """Apply the optimization pipeline to a single function."""
     stats = OptimizerStats(level=level)
     stats.instrs_before = _count_instrs_func(ir_func)
 
@@ -140,42 +92,51 @@ def optimize_function(ir_func: IRFunction,
         pass
 
     elif level == OptimizationLevel.O1:
-        # Pass 1: Rename
+        # Pass 1: rename to break false dependencies
         rs = RenamerState()
         rename_function(ir_func, state=rs)
         stats.rename_vars_created = rs.counter
 
-        # Pass 2: DCE
+        # Pass 2: copy propagation (eliminates rename-generated copies)
+        propagate_copies_function(ir_func)
+
+        # Pass 3: DCE
         dce_s: DCEStats = eliminate_dead_code(ir_func)
         stats.dce_instrs_removed = dce_s.instrs_removed
 
     elif level == OptimizationLevel.O2:
-        # Pass 1: Rename inicial
+        # Pass 1: initial rename
         rs1 = RenamerState()
         rename_function(ir_func, state=rs1)
         stats.rename_vars_created += rs1.counter
 
-        # Pass 2: DCE inicial
+        # Pass 2: copy propagation
+        propagate_copies_function(ir_func)
+
+        # Pass 3: initial DCE
         dce_s1: DCEStats = eliminate_dead_code(ir_func)
         stats.dce_instrs_removed += dce_s1.instrs_removed
 
-        # Pass 3: Loop unrolling
+        # Pass 4: loop unrolling
         unroll_s: UnrollStats = unroll_function(ir_func)
         stats.unroll_loops_expanded = (unroll_s.loops_full_unrolled +
                                        unroll_s.loops_partial_unrolled)
         stats.unroll_instrs_added   = max(0, unroll_s.instrs_after -
                                           unroll_s.instrs_before)
 
-        # Pass 4: DCE post-unrolling (limpia temporales extra)
+        # Pass 5: DCE after unrolling (cleans extra temporals)
         dce_s2: DCEStats = eliminate_dead_code(ir_func)
         stats.dce_instrs_removed += dce_s2.instrs_removed
 
-        # Pass 5: Rename post-unrolling (maximiza independencia para scheduler)
+        # Pass 6: rename after unrolling (maximizes scheduler freedom)
         rs2 = RenamerState()
         rename_function(ir_func, state=rs2)
         stats.rename_vars_created += rs2.counter
 
-        # Pass 6: Instruction scheduling
+        # Pass 7: copy propagation after final rename
+        propagate_copies_function(ir_func)
+
+        # Pass 8: instruction scheduling
         sched_s: SchedulerStats = schedule_function(ir_func)
         stats.sched_instrs_moved    = sched_s.instrs_moved
         stats.sched_blocks_changed  = sched_s.blocks_changed
@@ -186,17 +147,13 @@ def optimize_function(ir_func: IRFunction,
 
 
 # ---------------------------------------------------------------------------
-# Pipeline por programa (interfaz principal)
-# ---------------------------------------------------------------------------
 
 def optimize_program(ir_program: IRProgram,
                      level: OptimizationLevel = OptimizationLevel.O1
                      ) -> OptimizerStats:
-    """
-    Aplica el pipeline de optimizacion a todo el programa.
+    """Apply the optimization pipeline to the full program.
 
-    Modifica ir_program in-place.
-    Retorna OptimizerStats con metricas agregadas.
+    Modifies ir_program in-place; returns aggregated OptimizerStats.
     """
     stats = OptimizerStats(level=level)
     stats.instrs_before = _count_instrs(ir_program)
@@ -204,42 +161,51 @@ def optimize_program(ir_program: IRProgram,
     t0 = time.perf_counter()
 
     if level == OptimizationLevel.O0:
-        pass   # nada que hacer
+        pass
 
     elif level == OptimizationLevel.O1:
-        # Pass 1: Rename (programa completo)
+        # Pass 1: rename
         rs = rename_program(ir_program)
         stats.rename_vars_created = rs.counter
 
-        # Pass 2: DCE
+        # Pass 2: copy propagation
+        propagate_copies_program(ir_program)
+
+        # Pass 3: DCE
         dce_s: DCEStats = dce_program(ir_program)
         stats.dce_instrs_removed = dce_s.instrs_removed
 
     elif level == OptimizationLevel.O2:
-        # Pass 1: Rename inicial
+        # Pass 1: initial rename
         rs1 = rename_program(ir_program)
         stats.rename_vars_created += rs1.counter
 
-        # Pass 2: DCE inicial
+        # Pass 2: copy propagation
+        propagate_copies_program(ir_program)
+
+        # Pass 3: initial DCE
         dce_s1: DCEStats = dce_program(ir_program)
         stats.dce_instrs_removed += dce_s1.instrs_removed
 
-        # Pass 3: Loop unrolling
+        # Pass 4: loop unrolling
         unroll_s: UnrollStats = unroll_program(ir_program)
         stats.unroll_loops_expanded = (unroll_s.loops_full_unrolled +
                                        unroll_s.loops_partial_unrolled)
         stats.unroll_instrs_added   = max(0, unroll_s.instrs_after -
                                           unroll_s.instrs_before)
 
-        # Pass 4: DCE post-unrolling
+        # Pass 5: DCE after unrolling
         dce_s2: DCEStats = dce_program(ir_program)
         stats.dce_instrs_removed += dce_s2.instrs_removed
 
-        # Pass 5: Rename post-unrolling
+        # Pass 6: rename after unrolling
         rs2 = rename_program(ir_program)
         stats.rename_vars_created += rs2.counter
 
-        # Pass 6: Instruction scheduling
+        # Pass 7: copy propagation after final rename
+        propagate_copies_program(ir_program)
+
+        # Pass 8: instruction scheduling
         sched_s: SchedulerStats = schedule_program(ir_program)
         stats.sched_instrs_moved   = sched_s.instrs_moved
         stats.sched_blocks_changed = sched_s.blocks_changed

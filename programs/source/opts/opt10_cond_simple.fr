@@ -1,17 +1,19 @@
 $ opt10_cond_simple.fr
-$ Condicional simple: scheduler reordena instrucciones independientes
-$ dentro de cada rama del si/sino.
-$ Resultado esperado: max(8, 3) = 8
-fonc [int] maximo([int] a, [int] b) {
-    [int] res = 0;
-    si (a > b) {
-        res = a;
+$ Condicional: scheduler reordena instrucciones independientes en cada rama.
+$ suma=3+5=8, prod=3*5=15. suma>prod? No → result=prod-suma=7
+$ Resultado esperado: 7
+fonc [int] diferencia([int] x, [int] y) {
+    [int] suma = x + y;
+    [int] prod = x * y;
+    [int] result = 0;
+    si (suma > prod) {
+        result = suma - prod;
     } sinon {
-        res = b;
+        result = prod - suma;
     }
-    ret res;
+    ret result;
 }
 
 fonc [int] main() {
-    ret maximo(8, 3);
+    ret diferencia(3, 5);
 }

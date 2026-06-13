@@ -27,6 +27,7 @@ class AsmGenerator(LanguageVisitor):
         self.loop_stack = []
         self.used_registers = set()
         self.return_label_stack = []
+        self.sp_delta = 0
 
         self.source_file = source_file
         self.visited_imports = visited_imports if visited_imports is not None else set()
@@ -106,7 +107,7 @@ class AsmGenerator(LanguageVisitor):
     def emit_load_symbol(self, destination, symbol):
         if symbol.get("is_local"):
             # Local variable: sp-relative frame access (no temp register needed)
-            offset = symbol["address"]
+            offset = symbol["address"] + self.sp_delta
             self.emit(f"lw {destination}, {offset}(sp)")
         else:
             # Global variable: load absolute address into temp register, then load
@@ -118,7 +119,7 @@ class AsmGenerator(LanguageVisitor):
     def emit_store_symbol(self, source, symbol):
         if symbol.get("is_local"):
             # Local variable: sp-relative frame store (no temp register needed)
-            offset = symbol["address"]
+            offset = symbol["address"] + self.sp_delta
             self.emit(f"sw {source}, {offset}(sp)")
         else:
             # Global variable: load absolute address into temp register, then store
@@ -678,7 +679,7 @@ class AsmGenerator(LanguageVisitor):
             if symbol["kind"] == "array":
                 if symbol.get("is_local"):
                     # Local array: base address = sp + frame_offset
-                    self.emit(f"addi {register}, sp, {symbol['address']}")
+                    self.emit(f"addi {register}, sp, {symbol['address'] + self.sp_delta}")
                 else:
                     # Global array: load absolute address
                     self.emit_load_immediate(register, symbol["address"])
@@ -700,27 +701,34 @@ class AsmGenerator(LanguageVisitor):
 
         num_args = len(arguments)
         num_arg_regs = len(self.ARG_REGISTERS)
+        num_reg_args = min(num_args, num_arg_regs)
         num_extras = max(0, num_args - num_arg_regs)
         extra_bytes = num_extras * self.WORD_SIZE
 
-        # Step 1: evaluate all arguments FIRST (reads frame locals at correct sp offsets)
-        # Defer sp adjustments until after all arg expressions are evaluated.
-        evaluated_args = []
-        for arg_ctx in arguments:
-            evaluated_args.append(self.visit(arg_ctx))
+        # Step 1: evaluate the register-bound args (first min(num_args, 6)) into temp
+        # registers. Peak usage: min(num_args, 6) temp regs — well within the limit.
+        reg_arg_regs = []
+        for i in range(num_reg_args):
+            reg_arg_regs.append(self.visit(arguments[i]))
 
-        # Step 2: push extra args to stack (only shifts sp for overflow args)
+        # Step 2: move register args into calling-convention registers and free the
+        # temp regs before evaluating extras. This keeps the temp register pool
+        # available for complex extra-arg expressions (indexed accesses, etc.).
+        for i, value_register in enumerate(reg_arg_regs):
+            self.emit_move(self.ARG_REGISTERS[i], value_register)
+            self.free_register(value_register)
+
+        # Step 3: allocate stack space for extra args, then evaluate each extra
+        # immediately storing it (1 temp reg at a time). sp_delta compensates all
+        # sp-relative local variable accesses emitted during these evaluations.
         if num_extras > 0:
             self.emit(f"addi sp, sp, -{extra_bytes}")
-
-        # Step 3: move evaluated arg values into calling-convention registers
-        for index, value_register in enumerate(evaluated_args):
-            if index < num_arg_regs:
-                self.emit_move(self.ARG_REGISTERS[index], value_register)
-            else:
-                stack_offset = (index - num_arg_regs) * self.WORD_SIZE
-                self.emit(f"sw {value_register}, {stack_offset}(sp)")
-            self.free_register(value_register)
+            self.sp_delta += extra_bytes
+            for i in range(num_extras):
+                extra_reg = self.visit(arguments[num_arg_regs + i])
+                self.emit(f"sw {extra_reg}, {i * self.WORD_SIZE}(sp)")
+                self.free_register(extra_reg)
+            self.sp_delta -= extra_bytes
 
         # Step 4: caller-save — snapshot live outer-context regs AFTER args freed.
         # These are temps from the surrounding expression that the callee will clobber.
@@ -772,7 +780,7 @@ class AsmGenerator(LanguageVisitor):
         if symbol["kind"] == "array":
             if symbol.get("is_local"):
                 # Local array: base = sp + frame_offset
-                self.emit(f"addi {address_register}, sp, {symbol['address']}")
+                self.emit(f"addi {address_register}, sp, {symbol['address'] + self.sp_delta}")
             else:
                 # Global array: absolute address
                 self.emit_load_immediate(address_register, symbol["address"])

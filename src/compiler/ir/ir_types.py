@@ -1,22 +1,3 @@
-"""
-ir_types.py — Instrucciones de representación intermedia (IR) de tres direcciones.
-
-Cada instrucción de 3-direcciones tiene la forma:
-    dest = operand1  op  operand2
-
-Los operandos son strings: nombres de variables ("x"), temporales ("t0", "t1")
-o literales enteros como string ("42", "0").
-
-Cada clase expone dos métodos clave que las optimizaciones van a usar:
-    defs() -> set[str]   variables que esta instrucción *define* (escribe)
-    uses() -> set[str]   variables que esta instrucción *lee*
-
-Esto es la base para:
-    - Análisis de liveness (DCE)
-    - Detección de dependencias RAW/WAR/WAW (reordenamiento)
-    - Renombramiento de registros
-"""
-
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
@@ -24,11 +5,9 @@ from typing import Optional
 
 
 # ---------------------------------------------------------------------------
-# Operadores
-# ---------------------------------------------------------------------------
 
 class BinOp(Enum):
-    """Operadores binarios soportados por la ISA GAEM y el lenguaje FRC."""
+    """Binary operators supported by the GAEM ISA."""
     ADD = "+"
     SUB = "-"
     MUL = "*"
@@ -39,7 +18,7 @@ class BinOp(Enum):
     XOR = "^"
     SHL = "<<"
     SHR = ">>"
-    # Comparaciones (producen 0 o 1)
+    # Comparisons (produce 0 or 1)
     EQ  = "=="
     NEQ = "!="
     GT  = ">"
@@ -49,67 +28,42 @@ class BinOp(Enum):
 
 
 class UnOp(Enum):
-    """Operadores unarios."""
-    NEG = "-"   # negación aritmética
-    NOT = "!"   # negación lógica
+    """Unary operators."""
+    NEG = "-"   # arithmetic negation
+    NOT = "!"   # logical negation
 
 
-# ---------------------------------------------------------------------------
-# Clase base
 # ---------------------------------------------------------------------------
 
 class IRInstruction:
-    """
-    Base de todas las instrucciones IR.
-
-    Por defecto defs() y uses() retornan conjuntos vacíos.
-    Cada subclase sobreescribe los que correspondan.
-    """
+    """Base class for all IR instructions."""
 
     def defs(self) -> set[str]:
-        """Conjunto de variables que esta instrucción define (escribe)."""
+        """Variables defined (written) by this instruction."""
         return set()
 
     def uses(self) -> set[str]:
-        """Conjunto de variables que esta instrucción usa (lee)."""
+        """Variables used (read) by this instruction."""
         return set()
 
     def rename(self, old: str, new: str) -> None:
-        """
-        Reemplaza todas las ocurrencias del operando 'old' por 'new'.
-        Usado por el renombramiento de registros.
-        Cada subclase sobreescribe este método.
-        """
+        """Replace all occurrences of operand old with new."""
         pass
 
     def rename_uses(self, old: str, new: str) -> None:
-        """
-        Reemplaza 'old' por 'new' SOLO en las posiciones de uso (lectura).
-        Nunca toca el destino (def). Usado por el renamer para evitar
-        pisar el def cuando use y def comparten el mismo nombre (e.g. a = a + 1).
-        """
+        """Replace old with new only in use positions, never in the def."""
         pass
 
     def rename_def(self, old: str, new: str) -> None:
-        """
-        Reemplaza 'old' por 'new' SOLO en la posicion de definicion (dest).
-        Nunca toca los operandos de lectura.
-        """
+        """Replace old with new only in the definition position."""
         pass
 
 
-# ---------------------------------------------------------------------------
-# Instrucciones concretas
 # ---------------------------------------------------------------------------
 
 @dataclass
 class IRBinOp(IRInstruction):
-    """
-    Operación binaria de tres direcciones.
-    Forma:  dest = left  op  right
-
-    Ejemplo:  t1 = x + y
-    """
+    """Three-address binary operation: dest = left op right."""
     dest:  str
     left:  str
     op:    BinOp
@@ -139,12 +93,7 @@ class IRBinOp(IRInstruction):
 
 @dataclass
 class IRUnOp(IRInstruction):
-    """
-    Operación unaria.
-    Forma:  dest = op operand
-
-    Ejemplo:  t1 = -x     t2 = !flag
-    """
+    """Unary operation: dest = op operand."""
     dest:    str
     op:      UnOp
     operand: str
@@ -171,13 +120,7 @@ class IRUnOp(IRInstruction):
 
 @dataclass
 class IRCopy(IRInstruction):
-    """
-    Copia simple entre operandos.
-    Forma:  dest = src
-
-    Ejemplo:  t1 = x
-    También se usa para cargar literales:  t1 = 42
-    """
+    """Simple copy or literal load: dest = src."""
     dest: str
     src:  str
 
@@ -185,7 +128,7 @@ class IRCopy(IRInstruction):
         return {self.dest}
 
     def uses(self) -> set[str]:
-        # Los literales (solo dígitos o hex) no son variables → no se cuentan
+        # Numeric literals are not variables
         return {self.src} if not _is_literal(self.src) else set()
 
     def rename(self, old: str, new: str) -> None:
@@ -204,13 +147,7 @@ class IRCopy(IRInstruction):
 
 @dataclass
 class IRLoad(IRInstruction):
-    """
-    Carga desde memoria.
-    Forma:  dest = mem[base + offset]
-
-    Corresponde a la instrucción 'lw' de la ISA GAEM.
-    Ejemplo:  t1 = mem[arr + 8]
-    """
+    """Memory load: dest = mem[base + offset]. Maps to 'lw' in GAEM."""
     dest:   str
     base:   str
     offset: int
@@ -237,22 +174,16 @@ class IRLoad(IRInstruction):
 
 @dataclass
 class IRStore(IRInstruction):
-    """
-    Escritura en memoria.
-    Forma:  mem[base + offset] = src
+    """Memory write: mem[base + offset] = src. Maps to 'sw' in GAEM.
 
-    Corresponde a la instrucción 'sw' de la ISA GAEM.
-    Ejemplo:  mem[arr + 8] = t1
-
-    Nota: IRStore no *define* variables, pero sí *usa* base y src.
-    Es un efecto de lado visible → el DCE no puede eliminarlo.
+    Has observable side effects; DCE must never remove it.
     """
     base:   str
     offset: int
     src:    str
 
     def defs(self) -> set[str]:
-        return set()   # no define variables
+        return set()   # no variable defined
 
     def uses(self) -> set[str]:
         return {self.base, self.src}
@@ -266,7 +197,7 @@ class IRStore(IRInstruction):
         if self.src  == old: self.src  = new
 
     def rename_def(self, old: str, new: str) -> None:
-        pass  # IRStore no tiene destino
+        pass  # IRStore has no destination
 
     def __str__(self) -> str:
         return f"mem[{self.base} + {self.offset}] = {self.src}"
@@ -278,12 +209,7 @@ class IRStore(IRInstruction):
 
 @dataclass
 class IRLabel(IRInstruction):
-    """
-    Definición de etiqueta (punto de salto).
-    Forma:  name:
-
-    Ejemplo:  WHILE_START_0:
-    """
+    """Label definition (jump target): name:"""
     name: str
 
     def __str__(self) -> str:
@@ -292,12 +218,7 @@ class IRLabel(IRInstruction):
 
 @dataclass
 class IRGoto(IRInstruction):
-    """
-    Salto incondicional.
-    Forma:  goto target
-
-    Corresponde a 'j label' en GAEM.
-    """
+    """Unconditional jump: goto target. Maps to 'j label' in GAEM."""
     target: str
 
     def __str__(self) -> str:
@@ -306,13 +227,7 @@ class IRGoto(IRInstruction):
 
 @dataclass
 class IRIfTrue(IRInstruction):
-    """
-    Salto condicional: salta si la condición es verdadera (distinto de cero).
-    Forma:  if cond goto target
-
-    Corresponde a 'bne cond, zero, label' en GAEM.
-    Ejemplo:  if t1 goto WHILE_END_0
-    """
+    """Conditional jump if cond != 0: if cond goto target."""
     cond:   str
     target: str
 
@@ -334,13 +249,7 @@ class IRIfTrue(IRInstruction):
 
 @dataclass
 class IRIfFalse(IRInstruction):
-    """
-    Salto condicional: salta si la condición es falsa (igual a cero).
-    Forma:  iffalse cond goto target
-
-    Corresponde a 'beq cond, zero, label' en GAEM.
-    Ejemplo:  iffalse t1 goto IF_ELSE_0
-    """
+    """Conditional jump if cond == 0: iffalse cond goto target."""
     cond:   str
     target: str
 
@@ -362,16 +271,7 @@ class IRIfFalse(IRInstruction):
 
 @dataclass
 class IRParam(IRInstruction):
-    """
-    Empuja un argumento para la siguiente llamada a función.
-    Forma:  param value
-
-    Se emiten N instrucciones IRParam antes de un IRCall con N argumentos.
-    Ejemplo:
-        param x
-        param y
-        t0 = call suma, 2
-    """
+    """Push one argument before a function call: param value."""
     value: str
 
     def uses(self) -> set[str]:
@@ -392,16 +292,7 @@ class IRParam(IRInstruction):
 
 @dataclass
 class IRCall(IRInstruction):
-    """
-    Llamada a función.
-    Forma:  dest = call func, arg_count    (con valor de retorno)
-            call func, arg_count           (sin valor de retorno / void)
-
-    Los argumentos ya fueron emitidos como instrucciones IRParam previas.
-    'arg_count' indica cuántos IRParam preceden a este IRCall.
-
-    Corresponde a 'jal ra, FUNC_xxx' en GAEM.
-    """
+    """Function call. Args are the preceding IRParam instructions."""
     dest:      Optional[str]
     func:      str
     arg_count: int
@@ -410,14 +301,14 @@ class IRCall(IRInstruction):
         return {self.dest} if self.dest else set()
 
     def uses(self) -> set[str]:
-        # Los argumentos reales están en los IRParam anteriores
+        # Actual arguments are carried by preceding IRParam instructions
         return set()
 
     def rename(self, old: str, new: str) -> None:
         if self.dest == old: self.dest = new
 
     def rename_uses(self, old: str, new: str) -> None:
-        pass  # IRCall no lee variables directamente (los args van en IRParam)
+        pass  # args live in IRParam, not here
 
     def rename_def(self, old: str, new: str) -> None:
         if self.dest == old: self.dest = new
@@ -434,13 +325,7 @@ class IRCall(IRInstruction):
 
 @dataclass
 class IRReturn(IRInstruction):
-    """
-    Retorno de función.
-    Forma:  return value    (con valor)
-            return          (void)
-
-    Corresponde a 'jr ra' en GAEM.
-    """
+    """Function return. Maps to 'jr ra' in GAEM."""
     value: Optional[str] = None
 
     def uses(self) -> set[str]:
@@ -455,22 +340,16 @@ class IRReturn(IRInstruction):
         if self.value == old: self.value = new
 
     def rename_def(self, old: str, new: str) -> None:
-        pass  # IRReturn no define variables
+        pass  # IRReturn defines no variable
 
     def __str__(self) -> str:
         return f"return {self.value}" if self.value else "return"
 
 
 # ---------------------------------------------------------------------------
-# Utilidades internas
-# ---------------------------------------------------------------------------
 
 def _is_literal(operand: str) -> bool:
-    """
-    Retorna True si el operando es un literal numérico (no una variable).
-    Ejemplos: "42", "0", "0xFF" → True
-              "t0", "x", "arr"  → False
-    """
+    """Return True if operand is a numeric literal, not a variable name."""
     try:
         int(operand, 0)
         return True
