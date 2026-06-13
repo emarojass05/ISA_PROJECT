@@ -92,6 +92,7 @@ module cpu_top #(
     logic ex_V;
 
     logic cache_stall;
+    logic wb_empty;
     logic ch_mem_read;
     assign ch_mem_read = (ex_mem_reg.wb_src == WB_MEM);
 
@@ -490,7 +491,8 @@ module cpu_top #(
         .perf_l2_hits      (perf_l2_hits),
         .perf_l2_misses    (perf_l2_misses),
         .perf_mm_accesses  (perf_mm_accesses),
-        .perf_stall_cycles (perf_cache_stall_cycles)
+        .perf_stall_cycles (perf_cache_stall_cycles),
+        .wb_empty          (wb_empty)
     );
 
     always @(*) begin

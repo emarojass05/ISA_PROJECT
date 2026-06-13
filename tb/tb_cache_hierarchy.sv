@@ -53,6 +53,7 @@ module tb_cache_hierarchy;
     reg  [31:0]     write_data;
     wire [31:0]     read_data;
     wire            cache_stall;
+    wire            wb_empty;
 
     // =========================================================================
     // DUT instantiation
@@ -74,7 +75,8 @@ module tb_cache_hierarchy;
         .addr        (addr),
         .write_data  (write_data),
         .read_data   (read_data),
-        .cache_stall (cache_stall)
+        .cache_stall (cache_stall),
+        .wb_empty    (wb_empty)
     );
     defparam dut.u_main_mem.INIT_FILE = "";
 
@@ -101,9 +103,10 @@ module tb_cache_hierarchy;
     reg          ok;         // generic ok flag
     reg          ok_w;       // write-operation ok flag
     reg          ok_r;       // read-operation  ok flag
-    integer      lp_i;       // loop index  (TC-4)
-    reg [XLEN-1:0] lp_addr; // loop address (TC-4)
-    reg [31:0]   lp_data;   // loop data    (TC-4)
+    integer      lp_i;       // loop index  (TC-4, TC-8)
+    reg [XLEN-1:0] lp_addr; // loop address (TC-4, TC-8)
+    reg [31:0]   lp_data;   // loop data    (TC-4, TC-8)
+    integer      wb_wait;   // cycle counter for wb_empty polling (TC-8)
 
     // =========================================================================
     // Task: apply_reset
@@ -372,6 +375,54 @@ module tb_cache_hierarchy;
             $display("[PASS]  TC-7  cache_stall = 0 after reset with no request");
             n_passed = n_passed + 1;
         end
+
+        // ── TC-8  Dirty L2 eviction drains to memory via write buffer ─────────
+        // Force an L2 eviction by writing to enough lines that map to the same
+        // L2 set (L2 is 4-way, so writing 5 distinct lines to the same set
+        // will evict one). Then wait for wb_empty and read back the evicted line.
+        //
+        // L2 has 128 sets; the set index comes from addr[11:5] (7 bits).
+        // Stride = 128 * 32 bytes = 4096 = 0x1000 maps to the same set.
+        // We write 5 values to addresses 0x2000, 0x3000, 0x4000, 0x5000, 0x6000
+        // (all have set-index = addr[11:5] = 0). The 5th write evicts one of the
+        // first four as a dirty line into the write buffer.
+        $display("\n-- TC-8  Dirty L2 eviction -> write buffer drain --");
+        apply_reset();
+        idle(2);
+        cache_enable = 1'b1;
+
+        // Write 5 lines to the same L2 set; the 5th evicts a dirty line.
+        for (lp_i = 0; lp_i < 5; lp_i = lp_i + 1) begin
+            lp_addr = 32'h0000_2000 + (lp_i * 32'h1000);
+            lp_data = 32'hC8_0000 | lp_i[31:0];
+            do_write(lp_addr, lp_data, ok_w);
+            check_op($sformatf("TC-8 write addr=0x%08h", lp_addr), ok_w);
+        end
+
+        // Wait for the write buffer to drain the evicted dirty line.
+        wb_wait = 0;
+        while (!wb_empty && wb_wait < OP_TIMEOUT * 2) begin
+            @(posedge clk);
+            wb_wait = wb_wait + 1;
+        end
+        n_tests = n_tests + 1;
+        if (!wb_empty) begin
+            $display("[FAIL]  TC-8  wb_empty never set after eviction (waited %0d cycles)", wb_wait);
+            n_failed = n_failed + 1;
+        end else begin
+            $display("[PASS]  TC-8  wb_empty asserted after %0d extra cycles", wb_wait);
+            n_passed = n_passed + 1;
+        end
+
+        // Read back one of the addresses that was overwritten to confirm the
+        // evicted dirty data survived the drain path (data in main memory must
+        // match what was written by the cache).  We read address 0x2000 which
+        // was the first write and most likely the evicted victim.
+        do_read(32'h0000_2000, cap_rdata, ok_r);
+        check_val("TC-8 evicted line readable after drain",
+                  ok_r, cap_rdata, 32'hC8_0000);
+
+        idle(2);
 
         // ── Summary ───────────────────────────────────────────────────────────
         idle(4);

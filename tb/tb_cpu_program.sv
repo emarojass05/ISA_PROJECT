@@ -251,6 +251,14 @@ module tb_cpu_program;
                     #1;
                 end
 
+                // Drain the write buffer before the memory dump so that dirty
+                // evictions from L2 are visible in main memory. Required for
+                // verify-cache-modes correctness when CACHE_ENABLE=1.
+                while (CACHE_ENABLE != 0 && !dut.wb_empty) begin
+                    @(posedge clk);
+                    #1;
+                end
+
                 for (drain_count = 0; drain_count < DRAIN_CYCLES; drain_count = drain_count + 1) begin
                     @(posedge clk);
                     #1;
