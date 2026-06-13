@@ -44,6 +44,7 @@ from collections import namedtuple
 _Passes = namedtuple("_Passes", ["rename", "dce", "loopu", "schedule", "factor", "label"])
 
 _O0 = _Passes(False, False, False, False, 0, "O0")
+_O2 = _Passes(True,  True,  True,  True,  0, "O2")
 
 
 def _resolve_passes(args) -> "_Passes":
@@ -386,7 +387,7 @@ def main():
     print(f"  Output : {out_dir}/")
 
     if args.compare:
-        cmp_passes = passes if passes.label != "O0" else _Passes(False, False, False, False, 0, "O2")
+        cmp_passes = passes if passes.label != "O0" else _O2
         print(f"  Mode   : comparison O0 vs {cmp_passes.label}\n")
         render_compare(source_file, out_dir, args.fmt, cmp_passes)
         return
