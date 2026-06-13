@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+    cat <<'EOF'
+Usage: ./cfg <source> [OPTIONS]
+
+  <source>   Archivo .fr a visualizar. Puede ser el nombre del archivo solo
+             (se busca bajo programs/source/) o una ruta relativa/absoluta.
+
+Options:
+  --O1           Compilar con optimizaciones O1
+  --O2           Compilar con optimizaciones O2
+  --compare      Generar comparacion O0 vs O2 en HTML lado a lado
+                 (usar junto con --O1 para comparar O0 vs O1)
+  --fmt FORMAT   Formato de imagen: svg (default), png, pdf
+  --out DIR      Directorio de salida (default: build/cfg/)
+  --view         Abrir imagen automaticamente al terminar
+  -h, --help     Mostrar este mensaje y salir
+
+Examples:
+  ./cfg opt01_unroll_sum.fr
+  ./cfg opt01_unroll_sum.fr --O1
+  ./cfg opt01_unroll_sum.fr --O2
+  ./cfg opt01_unroll_sum.fr --compare
+  ./cfg opt01_unroll_sum.fr --compare --O1
+  ./cfg opt01_unroll_sum.fr --fmt png
+  ./cfg opt01_unroll_sum.fr --out docs/cfg
+  ./cfg opt01_unroll_sum.fr --view
+EOF
+}
+
+if [[ $# -eq 0 || "$1" == "-h" || "$1" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+# ——————————< Resolve source file >——————————
+source="$1"
+shift
+
+if [[ "$source" != --* && ! -f "$source" ]]; then
+    found=$(find "$SCRIPT_DIR/programs/source" -name "$source" 2>/dev/null | head -1)
+    if [[ -n "$found" ]]; then
+        source="$found"
+    fi
+fi
+
+"$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/tools/visualize_cfg.py" "$source" "$@"

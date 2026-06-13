@@ -117,8 +117,19 @@ class TripCountInfo:
     op:        BinOp    # comparison operator
 
     def compute(self) -> Optional[int]:
-        """Return static iteration count, or None if not computable."""
+        """Return static iteration count, or None if not computable.
+
+        Guards against step/operator sign mismatches that would produce a
+        spuriously large iteration count for a loop that actually runs 0 times
+        (e.g. i=10; i<0; step=+1 should yield 0, not 12).
+        """
         try:
+            # LT/LE require a positive step; GT/GE require a negative step.
+            if self.op in (BinOp.LT, BinOp.LE) and self.step <= 0:
+                return None
+            if self.op in (BinOp.GT, BinOp.GE) and self.step >= 0:
+                return None
+
             if self.op == BinOp.LT:
                 iters = (self.bound - self.init_val + self.step - 1) // self.step
             elif self.op == BinOp.LE:
@@ -333,16 +344,23 @@ def _apply_partial_unroll(body: List[IRInstruction],
         # Condition check between copies (not after the last one)
         if k < factor - 1:
             cond_suffix = f"_pu{k}"
-            new_body.extend(_clone_instrs(cond_instrs, cond_suffix))
-            # Clone the iffalse with updated condition temporary
+            cloned_cond = _clone_instrs(cond_instrs, cond_suffix)
+            new_body.extend(cloned_cond)
+            # Clone the iffalse and update its cond variable to the suffixed
+            # version.  Find the specific instruction that defines the original
+            # cond variable and use its (now-renamed) def as the new cond.
+            orig_cond = body[loop.iffalse_idx].cond
+            new_cond  = orig_cond  # fallback: keep original if not found
+            for instr in cloned_cond:
+                defs = instr.defs()
+                # The suffixed version of orig_cond is what we need
+                expected = f"{orig_cond}{cond_suffix}"
+                if expected in defs:
+                    new_cond = expected
+                    break
             new_iffalse = copy.deepcopy(iffalse_instr)
-            for instr in _clone_instrs(cond_instrs, cond_suffix):
-                for var in instr.defs():
-                    if var.startswith("_"):
-                        new_iffalse.rename_uses(
-                            body[loop.iffalse_idx].cond,
-                            var
-                        )
+            if new_cond != orig_cond:
+                new_iffalse.rename_uses(orig_cond, new_cond)
             new_body.append(new_iffalse)
 
     # Reconstruct: header + original condition + new_body + goto + exit
@@ -377,6 +395,11 @@ def unroll_function(ir_func: IRFunction,
     stats = UnrollStats()
     stats.instrs_before = len(ir_func.body)
 
+    # Track header labels already partially unrolled to avoid infinite loops.
+    # Full unrolling removes the loop entirely so it won't be seen again.
+    # Partial unrolling keeps the loop alive, so we must skip it next pass.
+    partial_done: set = set()
+
     # Repeat until no more loops to unroll (indices shift after each edit)
     changed = True
     while changed:
@@ -401,11 +424,15 @@ def unroll_function(ir_func: IRFunction,
                         changed = True
                         break   # restart search (indices changed)
 
-            # Partial unrolling
+            # Partial unrolling — skip loops already partially unrolled
+            if loop.header_label in partial_done:
+                continue
+
             f = factor if factor > 0 else _choose_factor(body_size)
             if f <= 1:
                 continue   # no useful unrolling
             ir_func.body = _apply_partial_unroll(ir_func.body, loop, f)
+            partial_done.add(loop.header_label)
             stats.loops_partial_unrolled += 1
             changed = True
             break   # restart search
@@ -415,8 +442,8 @@ def unroll_function(ir_func: IRFunction,
 
 
 def unroll_program(ir_program: IRProgram,
-                   factor: int = 0,
-                   max_full: int = 6) -> UnrollStats:
+                   factor: int = DEFAULT_FACTOR,
+                   max_full: int = DEFAULT_MAX_FULL_UNROLL) -> UnrollStats:
     """Apply loop unrolling to all functions in the program."""
     total = UnrollStats()
     for func in ir_program.functions:

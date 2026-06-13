@@ -8,7 +8,7 @@ from typing import Optional
 from .ir_program import IRFunction, IRProgram
 from .renamer import rename_program, rename_function, RenamerState
 from .dce import dce_program, eliminate_dead_code, DCEStats
-from .loop_unroller import unroll_program, unroll_function, UnrollStats
+from .loop_unroller import unroll_program, unroll_function, UnrollStats, DEFAULT_MAX_FULL_UNROLL
 from .scheduler import schedule_program, schedule_function, SchedulerStats
 from .copy_propagation import propagate_copies_program, propagate_copies_function
 
@@ -80,7 +80,9 @@ def _count_instrs_func(ir_func: IRFunction) -> int:
 # ---------------------------------------------------------------------------
 
 def optimize_function(ir_func: IRFunction,
-                      level: OptimizationLevel = OptimizationLevel.O1
+                      level: OptimizationLevel = OptimizationLevel.O1,
+                      unroll_factor: int = 0,
+                      unroll_max_full: int = DEFAULT_MAX_FULL_UNROLL,
                       ) -> OptimizerStats:
     """Apply the optimization pipeline to a single function."""
     stats = OptimizerStats(level=level)
@@ -117,8 +119,10 @@ def optimize_function(ir_func: IRFunction,
         dce_s1: DCEStats = eliminate_dead_code(ir_func)
         stats.dce_instrs_removed += dce_s1.instrs_removed
 
-        # Pass 4: loop unrolling
-        unroll_s: UnrollStats = unroll_function(ir_func)
+        # Pass 4: loop unrolling (factor and max_full configurable)
+        unroll_s: UnrollStats = unroll_function(
+            ir_func, factor=unroll_factor, max_full=unroll_max_full
+        )
         stats.unroll_loops_expanded = (unroll_s.loops_full_unrolled +
                                        unroll_s.loops_partial_unrolled)
         stats.unroll_instrs_added   = max(0, unroll_s.instrs_after -
@@ -149,11 +153,15 @@ def optimize_function(ir_func: IRFunction,
 # ---------------------------------------------------------------------------
 
 def optimize_program(ir_program: IRProgram,
-                     level: OptimizationLevel = OptimizationLevel.O1
+                     level: OptimizationLevel = OptimizationLevel.O1,
+                     unroll_factor: int = 0,
+                     unroll_max_full: int = DEFAULT_MAX_FULL_UNROLL,
                      ) -> OptimizerStats:
     """Apply the optimization pipeline to the full program.
 
     Modifies ir_program in-place; returns aggregated OptimizerStats.
+    unroll_factor: 0 = heuristic, 1 = disabled, N = explicit factor.
+    unroll_max_full: max trip count for full unrolling (0 = disable full unroll).
     """
     stats = OptimizerStats(level=level)
     stats.instrs_before = _count_instrs(ir_program)
@@ -187,8 +195,10 @@ def optimize_program(ir_program: IRProgram,
         dce_s1: DCEStats = dce_program(ir_program)
         stats.dce_instrs_removed += dce_s1.instrs_removed
 
-        # Pass 4: loop unrolling
-        unroll_s: UnrollStats = unroll_program(ir_program)
+        # Pass 4: loop unrolling (factor and max_full configurable via CLI)
+        unroll_s: UnrollStats = unroll_program(
+            ir_program, factor=unroll_factor, max_full=unroll_max_full
+        )
         stats.unroll_loops_expanded = (unroll_s.loops_full_unrolled +
                                        unroll_s.loops_partial_unrolled)
         stats.unroll_instrs_added   = max(0, unroll_s.instrs_after -
