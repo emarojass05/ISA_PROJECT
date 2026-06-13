@@ -424,7 +424,7 @@ def unroll_function(ir_func: IRFunction,
                         changed = True
                         break   # restart search (indices changed)
 
-            # Partial unrolling — skip loops already partially unrolled
+            # Partial unrolling - skip loops already partially unrolled
             if loop.header_label in partial_done:
                 continue
 

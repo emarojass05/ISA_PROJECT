@@ -144,13 +144,13 @@ class AsmGenerator(LanguageVisitor):
     def visitProgram(self, ctx):
         self.emit_label("ENTRY")
 
-        # Initialize stack pointer to top of data memory (DEPTH=65536 words → 0x3FFFC)
+        # Initialize stack pointer to top of data memory (DEPTH=65536 words -> 0x3FFFC)
         # Data memory is separate from instruction memory (Harvard architecture).
         # sp must be set before any function call that uses the stack.
         self.emit("luhw sp, 0x0003")
         self.emit("llhw sp, 0xFFFC")
 
-        # Procesar imports: emite sus globales ahora y acumula sus arboles
+        # Emit import globals now; accumulate their trees for later function emission
         for import_ctx in ctx.importDecl():
             self.visit(import_ctx)
 
@@ -174,13 +174,13 @@ class AsmGenerator(LanguageVisitor):
             jump_type="J"
         )
 
-        # Emitir codigo de funciones de archivos importados (recursivo)
+        # Emit function bodies from imported files (recursive imports resolved earlier)
         for imported_tree in self.imported_trees:
             for declaration_ctx in imported_tree.declaration():
                 if declaration_ctx.functionDecl() is not None:
                     self.visit(declaration_ctx)
 
-        # Emitir codigo de funciones locales
+        # Emit local function bodies
         for declaration_ctx in ctx.declaration():
             if declaration_ctx.functionDecl() is not None:
                 self.visit(declaration_ctx)
@@ -194,7 +194,7 @@ class AsmGenerator(LanguageVisitor):
         raw = ctx.STRING_LITERAL().getText()
         path_str = raw[1:-1]
 
-        # Resolver path relativo al archivo actual
+        # Resolve path relative to the current source file
         if self.source_file:
             import_path = Path(self.source_file).parent / path_str
         else:
@@ -209,7 +209,7 @@ class AsmGenerator(LanguageVisitor):
 
         real_path = str(import_path.resolve())
 
-        # Evitar imports circulares/duplicados
+        # Guard against circular/duplicate imports
         if real_path in self.visited_imports:
             return None
 
@@ -222,15 +222,15 @@ class AsmGenerator(LanguageVisitor):
 
         tree, _ = result
 
-        # Guardar el arbol para emitir sus funciones despues de PROGRAM_END
+        # Queue tree so its functions are emitted after PROGRAM_END
         self.imported_trees.append(tree)
 
-        # Emitir globales del archivo importado ahora (antes de PROGRAM_END)
+        # Emit globals of the imported file now (before PROGRAM_END)
         for decl_ctx in tree.declaration():
             if decl_ctx.functionDecl() is None:
                 self.visit(decl_ctx)
 
-        # Procesar imports transitivos (el importado puede importar otros)
+        # Recurse into transitive imports
         for import_ctx in tree.importDecl():
             self.visit(import_ctx)
 
@@ -705,22 +705,22 @@ class AsmGenerator(LanguageVisitor):
         num_extras = max(0, num_args - num_arg_regs)
         extra_bytes = num_extras * self.WORD_SIZE
 
-        # Step 1: evaluate the register-bound args (first min(num_args, 6)) into temp
-        # registers. Peak usage: min(num_args, 6) temp regs — well within the limit.
+        # Evaluate register-bound args (first min(num_args, 6)) into temp registers.
+        # Peak usage: min(num_args, 6) temp regs - well within the limit.
         reg_arg_regs = []
         for i in range(num_reg_args):
             reg_arg_regs.append(self.visit(arguments[i]))
 
-        # Step 2: move register args into calling-convention registers and free the
-        # temp regs before evaluating extras. This keeps the temp register pool
-        # available for complex extra-arg expressions (indexed accesses, etc.).
+        # Move register args into calling-convention registers and free the temp regs
+        # before evaluating extras. This keeps the temp register pool available for
+        # complex extra-arg expressions (indexed accesses, etc.).
         for i, value_register in enumerate(reg_arg_regs):
             self.emit_move(self.ARG_REGISTERS[i], value_register)
             self.free_register(value_register)
 
-        # Step 3: allocate stack space for extra args, then evaluate each extra
-        # immediately storing it (1 temp reg at a time). sp_delta compensates all
-        # sp-relative local variable accesses emitted during these evaluations.
+        # Allocate stack space for extra args, then evaluate each extra immediately
+        # storing it (1 temp reg at a time). sp_delta compensates all sp-relative local
+        # variable accesses emitted during these evaluations.
         if num_extras > 0:
             self.emit(f"addi sp, sp, -{extra_bytes}")
             self.sp_delta += extra_bytes
@@ -730,7 +730,7 @@ class AsmGenerator(LanguageVisitor):
                 self.free_register(extra_reg)
             self.sp_delta -= extra_bytes
 
-        # Step 4: caller-save — snapshot live outer-context regs AFTER args freed.
+        # Caller-save: snapshot live outer-context regs AFTER args freed.
         # These are temps from the surrounding expression that the callee will clobber.
         caller_saved = sorted(self.used_registers)
         save_bytes = len(caller_saved) * self.WORD_SIZE
@@ -739,20 +739,18 @@ class AsmGenerator(LanguageVisitor):
             for i, reg in enumerate(caller_saved):
                 self.emit(f"sw {reg}, {i * self.WORD_SIZE}(sp)")
 
-        # Step 5: call
         self.emit_jump_fixup(
             instruction=f"jal ra, {function_label}",
             label_name=function_label,
             jump_type="JAL"
         )
 
-        # Step 6: restore caller-saved registers
         if caller_saved:
             for i, reg in enumerate(caller_saved):
                 self.emit(f"lw {reg}, {i * self.WORD_SIZE}(sp)")
             self.emit(f"addi sp, sp, {save_bytes}")
 
-        # Step 7: clean up extra-arg stack space
+        # Clean up extra-arg stack space pushed before the call
         if num_extras > 0:
             self.emit(f"addi sp, sp, {extra_bytes}")
 

@@ -1,21 +1,21 @@
 """
 tools/cfg_demo.py
 =================
-Demo interactivo del CFG: compila un archivo .fr y muestra el CFG de
-cada funcion con bloques basicos, aristas y (opcionalmente) el formato DOT.
+Interactive CFG demo: compiles a .fr file and displays the CFG of each
+function with basic blocks, edges, and (optionally) DOT format.
 
-Uso desde la raiz del proyecto:
+Usage from the project root:
 
-    # Mostrar CFG de factorial (texto)
+    # Show CFG of factorial (text)
     python tools/cfg_demo.py programs/source/factorial.fr
 
-    # Mostrar CFG + formato DOT (para Graphviz)
+    # Show CFG + DOT format (for Graphviz)
     python tools/cfg_demo.py programs/source/factorial.fr --dot
 
-    # Solo la funcion 'factorial'
+    # Only the 'factorial' function
     python tools/cfg_demo.py programs/source/factorial.fr --func factorial
 
-    # Equivalente rapido al flag --cfg de main.py:
+    # Quick equivalent to the --cfg flag of main.py:
     python -m src.compiler.main programs/source/factorial.fr --cfg
 """
 
@@ -23,7 +23,7 @@ import sys
 import argparse
 from pathlib import Path
 
-# -- path setup (ejecutar desde la raiz del proyecto) --
+# -- path setup (run from project root) --
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from antlr4 import FileStream, CommonTokenStream
@@ -40,7 +40,7 @@ from src.compiler.ir.cfg import CFG
 
 
 # ---------------------------------------------------------------------------
-# Utilidades de parseo (copiadas de main.py para que el script sea standalone)
+# Parsing utilities (copied from main.py to keep the script standalone)
 # ---------------------------------------------------------------------------
 
 class SilentErrorListener(ErrorListener):
@@ -73,7 +73,7 @@ def parse_file(path: str):
 
 
 def build_symbol_table(tree, source_file: str) -> SymbolTable:
-    """Ejecuta el analisis semantico para poblar la tabla de simbolos."""
+    """Run semantic analysis to populate the symbol table."""
     from src.compiler.main import SemanticTableBuilder
     symbol_table = SymbolTable()
     builder = SemanticTableBuilder(symbol_table, source_file=source_file)
@@ -82,7 +82,7 @@ def build_symbol_table(tree, source_file: str) -> SymbolTable:
 
 
 # ---------------------------------------------------------------------------
-# Impresion del CFG
+# CFG printing
 # ---------------------------------------------------------------------------
 
 SEPARATOR = "=" * 60
@@ -91,20 +91,20 @@ THIN_SEP  = "-" * 60
 
 def print_cfg(cfg: CFG, show_dot: bool = False) -> None:
     print(f"\n{SEPARATOR}")
-    print(f"  FUNCION: {cfg.func_name}  |  {len(cfg.blocks)} bloques basicos")
+    print(f"  FUNCTION: {cfg.func_name}  |  {len(cfg.blocks)} basic blocks")
     print(SEPARATOR)
 
     for block in cfg.blocks:
-        print(f"\n  [Block {block.id}]  etiqueta={block.label()}")
-        print(f"  {'instrucciones':>14}:")
+        print(f"\n  [Block {block.id}]  label={block.label()}")
+        print(f"  {'instructions':>14}:")
         for instr in block.instructions:
             print(f"    {instr}")
-        pred_str = ", ".join(f"B{p.id}" for p in block.predecessors) or "(ninguno)"
-        succ_str = ", ".join(f"B{s.id}" for s in block.successors)   or "(ninguno)"
-        print(f"  {'predecesores':>14}: {pred_str}")
-        print(f"  {'sucesores':>14}: {succ_str}")
+        pred_str = ", ".join(f"B{p.id}" for p in block.predecessors) or "(none)"
+        succ_str = ", ".join(f"B{s.id}" for s in block.successors)   or "(none)"
+        print(f"  {'predecessors':>14}: {pred_str}")
+        print(f"  {'successors':>14}: {succ_str}")
 
-    print(f"\n  Aristas del CFG:")
+    print(f"\n  CFG edges:")
     for block in cfg.blocks:
         for succ in block.successors:
             print(f"    B{block.id} ({block.label()})  ->  B{succ.id} ({succ.label()})")
@@ -123,16 +123,16 @@ def print_cfg(cfg: CFG, show_dot: bool = False) -> None:
 def main():
     ap = argparse.ArgumentParser(
         prog="cfg_demo",
-        description="Muestra el CFG de cada funcion de un archivo .fr",
+        description="Show the CFG of each function in a .fr file",
     )
-    ap.add_argument("source", help="Ruta al archivo .fr")
+    ap.add_argument("source", help="Path to the .fr file")
     ap.add_argument(
         "--dot", action="store_true",
-        help="Tambien imprime el grafo en formato DOT (Graphviz)"
+        help="Also print the graph in DOT format (Graphviz)"
     )
     ap.add_argument(
         "--func", default=None,
-        help="Mostrar solo la funcion con este nombre"
+        help="Show only the function with this name"
     )
     args = ap.parse_args()
 
@@ -141,7 +141,7 @@ def main():
         print(f"[ERROR] Archivo no encontrado: {source_path}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"[INFO] Analizando: {source_path}")
+    print(f"[INFO] Analyzing: {source_path}")
 
     tree = parse_file(source_path)
     if tree is None:
@@ -150,7 +150,7 @@ def main():
     try:
         symbol_table = build_symbol_table(tree, source_path)
     except Exception as exc:
-        print(f"[ERROR] Analisis semantico: {exc}", file=sys.stderr)
+        print(f"[ERROR] Semantic analysis: {exc}", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -158,18 +158,18 @@ def main():
         ir_gen.visit(tree)
         ir_program = ir_gen.get_ir()
     except Exception as exc:
-        print(f"[ERROR] Generacion de IR: {exc}", file=sys.stderr)
+        print(f"[ERROR] IR generation: {exc}", file=sys.stderr)
         sys.exit(1)
 
     funcs = ir_program.functions
     if args.func:
         funcs = [f for f in funcs if f.name == args.func]
         if not funcs:
-            print(f"[ERROR] Funcion '{args.func}' no encontrada.", file=sys.stderr)
+            print(f"[ERROR] Function '{args.func}' not found.", file=sys.stderr)
             sys.exit(1)
 
-    print(f"[OK]   IR generada: {len(ir_program.functions)} funcion(es)")
-    print(f"[OK]   Construyendo CFG para {len(funcs)} funcion(es)...")
+    print(f"[OK]   IR generated: {len(ir_program.functions)} function(s)")
+    print(f"[OK]   Building CFG for {len(funcs)} function(s)...")
 
     for ir_func in funcs:
         cfg = CFG.build_from_function(ir_func)

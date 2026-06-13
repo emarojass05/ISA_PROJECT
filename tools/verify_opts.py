@@ -218,12 +218,12 @@ def run_verification(
     print(f"  {'-'*32}  {'-'*3}  {'-'*12}  {'-'*8}  {'-'*8}")
 
     for (prog_name, level_name, status, got, exp, ok, note) in results:
-        got_s = str(got) if got is not None else "—"
-        exp_s = str(exp) if exp is not None else "—"
+        got_s = str(got) if got is not None else "-"
+        exp_s = str(exp) if exp is not None else "-"
         icon  = "✔" if ok else "✘"
         print(f"  {icon} {prog_name:<31}  {level_name:<3}  {status:<12}  {got_s:>8}  {exp_s:>8}")
         if note:
-            print(f"    └─ {note}")
+            print(f"    +- {note}")
 
     print()
 
@@ -276,7 +276,7 @@ def main() -> None:
 
     print()
     print("=" * 70)
-    print("  verify_opts.py — end-to-end verification")
+    print("  verify_opts.py - end-to-end verification")
     print(f"  Programs  : {len(all_programs)}")
     print(f"  Levels    : {[l for l,_ in selected_levels]}")
     print(f"  Max cycles: {args.max_cycles}")

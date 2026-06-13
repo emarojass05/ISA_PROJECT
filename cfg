@@ -7,18 +7,18 @@ usage() {
     cat <<'EOF'
 Usage: ./cfg <source> [OPTIONS]
 
-  <source>   Archivo .fr a visualizar. Puede ser el nombre del archivo solo
-             (se busca bajo programs/source/) o una ruta relativa/absoluta.
+  <source>   .fr file to visualize. Can be just the filename
+             (searched under programs/source/) or a relative/absolute path.
 
 Options:
-  --O1           Compilar con optimizaciones O1
-  --O2           Compilar con optimizaciones O2
-  --compare      Generar comparacion O0 vs O2 en HTML lado a lado
-                 (usar junto con --O1 para comparar O0 vs O1)
-  --fmt FORMAT   Formato de imagen: svg (default), png, pdf
-  --out DIR      Directorio de salida (default: build/cfg/)
-  --view         Abrir imagen automaticamente al terminar
-  -h, --help     Mostrar este mensaje y salir
+  --O1           Compile with O1 optimizations
+  --O2           Compile with O2 optimizations
+  --compare      Generate O0 vs O2 comparison as side-by-side HTML
+                 (use with --O1 to compare O0 vs O1)
+  --fmt FORMAT   Image format: svg (default), png, pdf
+  --out DIR      Output directory (default: build/cfg/)
+  --view         Open image automatically when done
+  -h, --help     Show this message and exit
 
 Examples:
   ./cfg opt01_unroll_sum.fr
@@ -37,7 +37,7 @@ if [[ $# -eq 0 || "$1" == "-h" || "$1" == "--help" ]]; then
     exit 0
 fi
 
-# ——————————< Resolve source file >——————————
+# ==== Resolve source file ====
 source="$1"
 shift
 

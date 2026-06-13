@@ -128,7 +128,7 @@ class IRCodeGenerator:
         for var in sorted(all_vars):           # sorted for determinism
             if _is_literal(var):
                 continue
-            if var.startswith("@"):            # global address ref — no slot needed
+            if var.startswith("@"):            # global address ref - no slot needed
                 continue
             _, sym = self.symbol_table.lookup(var)
             if sym is None and var not in self._temp_slots:
@@ -180,7 +180,7 @@ class IRCodeGenerator:
             if psym and psym.get("is_local"):
                 self._emit(f"sw {_ARG_REGS[idx]}, {psym['address']}(sp)")
 
-        # Body — emit block-boundary comments whenever a new block starts
+        # Body - emit block-boundary comments whenever a new block starts
         _SEP = "=" * 44
         for idx, instr in enumerate(body[start_idx:], start=start_idx):
             if idx in _block_start:

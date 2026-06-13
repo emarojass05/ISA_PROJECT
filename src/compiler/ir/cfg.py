@@ -50,13 +50,11 @@ class CFG:
         if not instructions:
             return cfg
 
-        # Step 1: collect jump target labels
         jump_target_labels: set[str] = set()
         for instr in instructions:
             for lbl in _jump_targets(instr):
                 jump_target_labels.add(lbl)
 
-        # Step 1: identify leader indices
         leaders: set[int] = {0}   # first instruction is always a leader
 
         for i, instr in enumerate(instructions):
@@ -69,7 +67,6 @@ class CFG:
 
         sorted_leaders = sorted(leaders)
 
-        # Step 2: create basic blocks
         for block_id, leader_idx in enumerate(sorted_leaders):
             # Block ends just before the next leader
             if block_id + 1 < len(sorted_leaders):
@@ -82,14 +79,12 @@ class CFG:
                 block.append(instr)
             cfg.blocks.append(block)
 
-        # Step 3a: build label -> block map
         label_to_block: Dict[str, BasicBlock] = {}
         for block in cfg.blocks:
             for instr in block.instructions:
                 if isinstance(instr, IRLabel):
                     label_to_block[instr.name] = block
 
-        # Step 3b: add edges
         for i, block in enumerate(cfg.blocks):
             if block.is_empty():
                 continue

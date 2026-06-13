@@ -73,7 +73,7 @@ class IRBinOp(IRInstruction):
         return {self.dest}
 
     def uses(self) -> set[str]:
-        # Filter out numeric literals — they are not variables
+        # Filter out numeric literals - they are not variables
         return {v for v in (self.left, self.right) if not _is_literal(v)}
 
     def rename(self, old: str, new: str) -> None:
