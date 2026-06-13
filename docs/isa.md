@@ -797,3 +797,52 @@ Esto sigue el principio RISC de utilizar instrucciones simples que se combinan p
 - El ensamblador expande `li` en dos instrucciones U-type.
 - El soporte TEA actual se implementa como una primitiva de hardware más ciclos en software, no como una instrucción completa de cifrado por bloque.
 - Las instrucciones de seguridad requieren autenticación antes de modificar o utilizar datos protegidos de la bóveda.
+
+
+---
+
+## 16. Compatibilidad con Proyecto Grupal II
+
+La ISA GAEM se mantiene sin cambios de codificación para el Proyecto Grupal II. La extensión solicitada en esta etapa se realiza a nivel microarquitectural, agregando pipeline, jerarquía de memoria caché y contadores de rendimiento, sin modificar los campos de instrucción, opcodes, registros ni pseudoinstrucciones definidos previamente.
+
+### 16.1 Principio de compatibilidad
+
+Los programas ensamblados para el Proyecto Grupal I siguen siendo ejecutables en el procesador extendido. Las mejoras de rendimiento se obtienen por medio de:
+
+- Segmentación de cinco etapas.
+- Manejo de hazards y forwarding.
+- Jerarquía de caché L1-D/L2.
+- Modelo de memoria principal con latencia multiciclo.
+- Contadores de rendimiento integrados.
+- Optimizaciones aplicadas por el compilador sobre el mismo conjunto de instrucciones.
+
+Esto permite comparar el impacto de la arquitectura de memoria y de las optimizaciones del compilador sin cambiar la semántica del ISA.
+
+### 16.2 Interacción con la jerarquía de caché
+
+Las instrucciones `lw` y `sw` conservan su formato y significado. La diferencia está en la ruta microarquitectural que siguen durante la etapa MEM:
+
+```text
+lw/sw → EX calcula dirección efectiva → MEM consulta L1-D → L2 → memoria principal
+```
+
+Cuando la caché está habilitada, los accesos de datos pueden generar stalls dinámicos en el pipeline. Cuando la caché está deshabilitada, el sistema utiliza una memoria de bypass para comparar la ejecución con y sin jerarquía de caché.
+
+### 16.3 Instrucciones de seguridad
+
+Las instrucciones de seguridad (`auth`, `ldk`, `addk`, `xork`, `tea`) también se conservan sin cambios. La bóveda de llaves y la ALU de seguridad permanecen separadas del sistema de memoria de datos normal, por lo que las llaves no se exponen mediante `lw` ni `sw`.
+
+La instrucción `tea` continúa siendo una primitiva de ronda acelerada por hardware. El cifrado completo se construye en software mediante rutinas ensambladas que combinan ciclos, accesos a memoria e instrucciones de seguridad.
+
+### 16.4 Métricas sin modificar el ISA
+
+Los contadores de rendimiento se implementan como señales internas del procesador y del controlador de caché. No se agregan instrucciones obligatorias para leerlos desde software. En simulación, el testbench principal extrae estas señales jerárquicamente y genera reportes como:
+
+```text
+build/sim/metrics.txt
+build/sim/cycle_count.txt
+build/sim/register_dump.txt
+build/sim/memory_dump.txt
+```
+
+Esto evita alterar la codificación del ISA y mantiene la compatibilidad con los programas existentes.

@@ -2,89 +2,124 @@
 
 ## 1. Visión general
 
-SecuRISC-32 implementa un procesador RISC de 32 bits en SystemVerilog con una microarquitectura organizada en cinco etapas lógicas:
+SecuRISC-32 implementa un procesador RISC de 32 bits en SystemVerilog con una microarquitectura segmentada de cinco etapas:
 
-    IF → ID → EX → MEM → WB
+```text
+IF → ID → EX → MEM → WB
+```
 
-La implementación utiliza registros intermedios de pipeline para separar las etapas principales del datapath:
+La implementación conserva la ISA GAEM definida en el Proyecto Grupal I y extiende la organización interna del procesador con pipeline, manejo de hazards, forwarding, jerarquía de caché L1-D/L2, modelo de memoria principal con latencia multiciclo y contadores de rendimiento.
 
-    IF/ID
-    ID/EX
-    EX/MEM
-    MEM/WB
+| Aspecto                  | Decisión de diseño                                                              |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| Tipo de procesador       | RISC de 32 bits                                                                  |
+| Organización             | Pipeline de 5 etapas                                                             |
+| Etapas                   | IF, ID, EX, MEM, WB                                                              |
+| Memoria de instrucciones | ROM/IMEM separada, acceso directo desde IF                                       |
+| Memoria de datos         | Jerarquía L1-D → L2 → memoria principal, con bypass configurable                 |
+| Ancho de palabra         | 32 bits                                                                          |
+| Ancho de instrucción     | 32 bits                                                                          |
+| Banco de registros       | 32 registros de 32 bits                                                          |
+| Unidad de seguridad      | `sec_alu.sv`                                                                     |
+| Bóveda de llaves         | `key_vault.sv`                                                                   |
+| Jerarquía de caché       | `cache_hierarchy.sv`, `cache_ctrl.sv`, `cache_l1d.sv`, `cache_l2.sv`             |
+| Memoria principal        | `main_mem_model.sv`                                                              |
+| Write buffer             | `mem_write_buffer.sv`                                                            |
+| Módulo principal         | `cpu_top.sv`                                                                     |
 
-El procesador trabaja con una arquitectura tipo Harvard, ya que la memoria de instrucciones y la memoria de datos se modelan como módulos separados. Esto facilita la simulación con `iverilog`, permite cargar programas en la memoria de instrucciones mediante archivos `.hex` y permite cargar archivos externos en la memoria de datos para pruebas de cifrado.
-
-| Aspecto                  | Decisión de diseño                   |
-| ------------------------ | ------------------------------------ |
-| Tipo de procesador       | RISC de 32 bits                      |
-| Organización             | Pipeline lógico de 5 etapas          |
-| Etapas                   | IF, ID, EX, MEM, WB                  |
-| Memoria                  | Harvard: IMEM separada de DMEM       |
-| Ancho de palabra         | 32 bits                              |
-| Ancho del PC             | 32 bits                              |
-| Banco de registros       | 32 registros de 32 bits              |
-| Memoria de instrucciones | Parametrizable mediante `IMEM_DEPTH` |
-| Memoria de datos         | Parametrizable mediante `DMEM_DEPTH` |
-| Módulo principal         | `src/cpu/cpu_top.sv`                 |
-| Definiciones del ISA     | `src/cpu/isa_defs.sv`                |
-| Unidad de seguridad      | `src/cpu/sec_alu.sv`                 |
-| Bóveda de llaves         | `src/cpu/key_vault.sv`               |
-| Detección de riesgos     | `src/cpu/hazard_unit.sv`             |
-| Forwarding               | `src/cpu/forwarding_unit.sv`         |
-
-El diseño separa claramente la lógica de control, el datapath principal, la memoria, la bóveda de llaves y la ALU de seguridad. Esta modularidad permite probar cada componente de forma independiente mediante testbenches específicos.
+El diseño está orientado a simulación ciclo a ciclo con Icarus Verilog. La finalidad principal es medir el impacto de la jerarquía de memoria y de las optimizaciones del compilador sobre métricas como ciclos totales, IPC, misses de caché, stalls y tráfico hacia memoria principal.
 
 ---
 
 ## 2. Diagrama general de bloques
 
-[Datapath](Datapath_PGA1.pdf)
+El datapath base del procesador se encuentra representado en:
+
+```text
+Datapath_PGA1.pdf
+```
+
+Para el Proyecto Grupal II, el diagrama conceptual extendido es:
+
+```mermaid
+flowchart LR
+    PC[PC] --> IMEM[Instruction Memory / ROM]
+    IMEM --> IFID[IF/ID]
+    IFID --> DEC[Decoder]
+    DEC --> CU[Control Unit]
+    DEC --> RF[Register File]
+    RF --> IDEX[ID/EX]
+    CU --> IDEX
+    IDEX --> ALU[ALU]
+    IDEX --> SEC[SEC_ALU]
+    IDEX --> KV[Key Vault]
+    ALU --> EXMEM[EX/MEM]
+    SEC --> EXMEM
+    EXMEM --> CH[Cache Hierarchy]
+    CH --> L1[L1-D Cache]
+    L1 --> L2[L2 Unified Cache]
+    L2 --> WBQ[Write Buffer]
+    WBQ --> MM[Main Memory Model]
+    MM --> WBQ
+    CH --> MEMWB[MEM/WB]
+    MEMWB --> RF
+
+    HZ[Hazard Unit] --> PC
+    HZ --> IFID
+    HZ --> IDEX
+    FWD[Forwarding Unit] --> ALU
+    CH -- cache_stall --> HZ
+```
+
+La integración clave del Proyecto Grupal II se ubica en la etapa MEM. En lugar de conectar la etapa MEM directamente a una memoria de datos simple, el procesador usa `cache_hierarchy.sv`, que decide si la solicitud se atiende desde una memoria de bypass o desde la jerarquía L1-D/L2/memoria principal.
+
+---
 
 ## 3. Módulo principal `cpu_top.sv`
 
 El módulo principal de integración es:
 
-    src/cpu/cpu_top.sv
+```text
+src/cpu/cpu_top.sv
+```
 
 Este módulo instancia y conecta los principales bloques del procesador:
 
-| Instancia      | Módulo               | Función                            |
-| -------------- | -------------------- | ---------------------------------- |
-| `u_pc`         | `pc.sv`              | Mantiene el Program Counter        |
-| `u_pc_adder`   | `pc_adder.sv`        | Calcula `PC + 4`                   |
-| `u_imem`       | `instr_mem.sv`       | Memoria de instrucciones           |
-| `u_decoder`    | `decoder.sv`         | Decodifica campos de instrucción   |
-| `u_cu`         | `control_unit.sv`    | Genera señales de control          |
-| `u_rf`         | `register_file.sv`   | Banco de registros                 |
-| `u_alu`        | `alu.sv`             | Operaciones aritméticas y lógicas  |
-| `u_sec_alu`    | `sec_alu.sv`         | Operaciones de seguridad           |
-| `u_key_vault`  | `key_vault.sv`       | Almacenamiento protegido de llaves |
-| `u_dmem`       | `data_mem.sv`        | Memoria de datos                   |
-| `u_hazard`     | `hazard_unit.sv`     | Control de stalls y flushes        |
-| `u_forwarding` | `forwarding_unit.sv` | Reenvío de resultados entre etapas |
+| Instancia      | Módulo                 | Función                                                        |
+| -------------- | ---------------------- | -------------------------------------------------------------- |
+| `u_pc`         | `pc.sv`                | Mantiene el Program Counter                                    |
+| `u_pc_adder`   | `pc_adder.sv`          | Calcula `PC + 4`                                               |
+| `u_imem`       | `instr_mem.sv`         | Memoria de instrucciones                                       |
+| `u_decoder`    | `decoder.sv`           | Decodifica campos de instrucción                               |
+| `u_cu`         | `control_unit.sv`      | Genera señales de control                                      |
+| `u_rf`         | `register_file.sv`     | Banco de registros de 32 entradas                              |
+| `u_alu`        | `alu.sv`               | Operaciones aritméticas y lógicas                              |
+| `u_sec_alu`    | `sec_alu.sv`           | Operaciones de seguridad                                       |
+| `u_key_vault`  | `key_vault.sv`         | Almacenamiento protegido de llaves                             |
+| `u_cache`      | `cache_hierarchy.sv`   | Jerarquía de memoria L1-D/L2/memoria principal                 |
+| `u_hazard`     | `hazard_unit.sv`       | Control de stalls y flushes                                    |
+| `u_forwarding` | `forwarding_unit.sv`   | Reenvío de resultados entre etapas                             |
 
 El módulo recibe como parámetros:
 
-| Parámetro      | Descripción                                                       |
-| -------------- | ----------------------------------------------------------------- |
-| `XLEN`         | Ancho de palabra del procesador, por defecto 32 bits              |
-| `IMEM_DEPTH`   | Profundidad de la memoria de instrucciones                        |
-| `DMEM_DEPTH`   | Profundidad de la memoria de datos                                |
-| `PROGRAM_FILE` | Archivo `.hex` usado para inicializar la memoria de instrucciones |
-| `INITIAL_MEM`  | Archivo `.mem` usado para inicializar la memoria de datos         |
+| Parámetro       | Descripción                                                                 |
+| --------------- | --------------------------------------------------------------------------- |
+| `XLEN`          | Ancho de palabra del procesador, por defecto 32 bits                        |
+| `IMEM_DEPTH`    | Profundidad de la memoria de instrucciones                                  |
+| `DMEM_DEPTH`    | Profundidad de la memoria de datos o memoria principal simulada             |
+| `CACHE_ENABLE`  | Habilita la jerarquía de caché cuando es diferente de cero                  |
+| `PROGRAM_FILE`  | Archivo `.hex` usado para inicializar la memoria de instrucciones           |
+| `INITIAL_MEM`   | Archivo `.mem` usado para inicializar memoria de datos/memoria principal    |
 
 ---
 
 ## 4. Registros de pipeline
 
-La microarquitectura utiliza registros entre etapas definidos como `struct packed` en `isa_defs.sv`.
+La microarquitectura utiliza registros intermedios definidos como `struct packed` dentro de `isa_defs.sv`.
 
 ### 4.1 Registro IF/ID
 
 El registro `if_id_t` guarda la información generada en la etapa de búsqueda de instrucción.
-
-Campos principales:
 
 | Campo      | Descripción                                            |
 | ---------- | ------------------------------------------------------ |
@@ -96,15 +131,13 @@ Campos principales:
 
 El registro `id_ex_t` guarda operandos, inmediatos y señales de control necesarias para ejecutar la instrucción.
 
-Campos principales:
-
 | Campo       | Descripción                              |
 | ----------- | ---------------------------------------- |
 | `pc`        | PC de la instrucción                     |
 | `pc_plus4`  | PC + 4                                   |
 | `rs1_data`  | Dato leído del registro fuente 1         |
 | `rs2_data`  | Dato leído del registro fuente 2         |
-| `k_out`     | Dato leído desde la bóveda de llaves     |
+| `k_out`     | Palabra leída desde la bóveda de llaves  |
 | `imm_ext`   | Inmediato extendido                      |
 | `rs1_addr`  | Dirección de `rs1`                       |
 | `rs2_addr`  | Dirección de `rs2`                       |
@@ -122,9 +155,7 @@ Campos principales:
 
 ### 4.3 Registro EX/MEM
 
-El registro `ex_mem_t` guarda resultados producidos en la etapa de ejecución.
-
-Campos principales:
+El registro `ex_mem_t` guarda los resultados producidos en la etapa de ejecución y las señales necesarias para la etapa MEM.
 
 | Campo          | Descripción                       |
 | -------------- | --------------------------------- |
@@ -144,13 +175,11 @@ Campos principales:
 
 El registro `mem_wb_t` guarda los valores disponibles para la etapa de escritura.
 
-Campos principales:
-
 | Campo        | Descripción                           |
 | ------------ | ------------------------------------- |
 | `alu_result` | Resultado proveniente de la ALU       |
 | `sec_result` | Resultado proveniente de `sec_alu`    |
-| `mem_rdata`  | Dato leído desde memoria              |
+| `mem_rdata`  | Dato leído desde memoria/caché        |
 | `pc_plus4`   | PC + 4                                |
 | `rd_addr`    | Registro destino                      |
 | `wb_src`     | Selector de fuente de write back      |
@@ -162,14 +191,14 @@ Campos principales:
 
 ### 5.1 Instruction Fetch
 
-La etapa IF se encarga de obtener la instrucción desde la memoria de instrucciones.
+La etapa IF obtiene la instrucción desde la memoria de instrucciones.
 
-Flujo:
+```text
+PC → instr_mem → if_instr
+PC → pc_adder  → PC + 4
+```
 
-    PC → instr_mem → if_instr
-    PC → pc_adder  → PC + 4
-
-El PC se actualiza con `if_pc_next`, siempre que `pc_write` esté habilitado. Si la unidad de riesgos solicita detener el PC, se conserva el valor actual.
+El PC se actualiza con `if_pc_next` cuando `pc_write` está habilitado. Si ocurre un hazard o un stall por caché, la unidad de riesgos deshabilita la actualización del PC.
 
 Componentes usados:
 
@@ -179,57 +208,44 @@ Componentes usados:
 | `pc_adder.sv`  | Cálculo de `PC + 4`    |
 | `instr_mem.sv` | Lectura de instrucción |
 
-El resultado de esta etapa se guarda en `if_id_reg`.
-
----
-
 ### 5.2 Instruction Decode
 
 La etapa ID decodifica la instrucción, lee registros y genera señales de control.
 
-Flujo principal:
+```text
+if_id_reg.instr → decoder → opcode, funct3, funct7, rs1, rs2, rd, imm
+opcode/funct3/funct7 → control_unit → señales de control
+rs1/rs2 → register_file → datos fuente
+```
 
-    if_id_reg.instr → decoder → opcode, funct3, funct7, rs1, rs2, rd, imm
-    opcode/funct3/funct7 → control_unit → señales de control
-    rs1/rs2 → register_file → datos fuente
-
-El decoder extrae:
-
-| Campo    | Bits      |
-| -------- | --------- |
-| `opcode` | `[6:0]`   |
-| `rd`     | `[11:7]`  |
-| `funct3` | `[14:12]` |
-| `rs1`    | `[19:15]` |
-| `rs2`    | `[24:20]` |
-| `funct7` | `[31:25]` |
-
-El inmediato se extiende según el tipo de instrucción.
+El decoder extrae los campos de la instrucción según el ISA GAEM y extiende los inmediatos según el tipo de instrucción.
 
 Para instrucciones U-type, el diseño usa:
 
-    final_rs1_addr = id_u_load ? id_rd_addr : id_rs1_addr
+```systemverilog
+final_rs1_addr = id_u_load ? id_rd_addr : id_rs1_addr
+```
 
-Esto permite que `luhw` y `llhw` operen sobre el registro destino para construir constantes de 32 bits en dos pasos, como ocurre con la pseudoinstrucción `li`.
-
-El resultado de esta etapa se guarda en `id_ex_reg`.
-
----
+Esto permite que `luhw` y `llhw` construyan constantes de 32 bits usando el registro destino como fuente parcial.
 
 ### 5.3 Execute
 
-La etapa EX ejecuta operaciones aritméticas, lógicas, de seguridad y evaluación de branches.
+La etapa EX ejecuta operaciones aritméticas, lógicas, operaciones de seguridad y evaluación de branches.
 
 #### Camino ALU
 
 La ALU recibe:
 
-    a = ex_forwarded_rs1
-    b = ex_alu_b
+```text
+a = ex_forwarded_rs1
+b = ex_alu_b
+```
 
 El segundo operando se selecciona con:
 
-    ex_alu_b = alu_src ? imm_ext : ex_forwarded_rs2
+```text
+ex_alu_b = alu_src ? imm_ext : ex_forwarded_rs2
+```
 
 La ALU produce:
 
@@ -245,30 +261,25 @@ La ALU produce:
 
 La ALU de seguridad recibe:
 
-    a      = ex_forwarded_rs1
-    b      = ex_forwarded_rs2
-    key    = id_ex_reg.k_out
-    sec_op = id_ex_reg.sec_op
+```text
+a      = ex_forwarded_rs1
+b      = ex_forwarded_rs2
+key    = id_ex_reg.k_out
+sec_op = id_ex_reg.sec_op
+auth_en = auth_bit
+```
 
 Produce:
 
-    ex_sec_result
+```text
+ex_sec_result
+```
 
-Las operaciones soportadas por `sec_alu` son:
-
-| Operación  | Descripción                                        |
-| ---------- | -------------------------------------------------- |
-| `SEC_ADDK` | Suma `a + key`                                     |
-| `SEC_XORK` | XOR `a ^ key`                                      |
-| `SEC_TEA`  | Primitiva estilo TEA                               |
-| `SEC_AUTH` | Controlada fuera de `sec_alu`, mediante `auth_bit` |
-| `SEC_LDK`  | Escritura en bóveda, no produce write back         |
+Las operaciones soportadas son `SEC_ADDK`, `SEC_XORK` y `SEC_TEA`. Las operaciones `SEC_AUTH` y `SEC_LDK` controlan el estado de autenticación y la escritura en bóveda, pero no producen write back directo.
 
 #### Branch
 
-Los branches se evalúan usando los flags producidos por la ALU. Para branches, la unidad de control configura `alu_op = ALU_SUB`, de modo que la comparación se derive del resultado de `rs1 - rs2`.
-
-Condiciones implementadas:
+Los branches se evalúan con los flags producidos por la ALU. Para branches, la unidad de control configura `alu_op = ALU_SUB`, de modo que la comparación se derive de `rs1 - rs2`.
 
 | Branch | Condición        |
 | ------ | ---------------- |
@@ -281,37 +292,39 @@ Condiciones implementadas:
 
 La dirección objetivo se calcula como:
 
-    ex_pc_imm = id_ex_reg.pc + id_ex_reg.imm_ext
-
-El resultado de esta etapa se guarda en `ex_mem_reg`.
-
----
+```text
+ex_pc_imm = id_ex_reg.pc + id_ex_reg.imm_ext
+```
 
 ### 5.4 Memory Access
 
-La etapa MEM accede a memoria de datos cuando la instrucción es `lw` o `sw`.
+La etapa MEM accede a memoria cuando la instrucción es `lw` o `sw`.
 
-Para `lw`:
+En la implementación extendida, esta etapa se conecta a `cache_hierarchy.sv`.
 
-    mem_rdata = data_mem[ex_mem_reg.alu_result]
+```text
+EX/MEM.alu_result → cache_hierarchy.addr
+EX/MEM.rs2_data   → cache_hierarchy.write_data
+cache_hierarchy.read_data → MEM/WB.mem_rdata
+```
 
-Para `sw`:
+La señal de lectura hacia la jerarquía se deriva de:
 
-    data_mem[ex_mem_reg.alu_result] = ex_mem_reg.rs2_data
+```systemverilog
+ch_mem_read = (ex_mem_reg.wb_src == WB_MEM)
+```
 
-El módulo usado es:
+La señal de escritura se toma de:
 
-    src/cpu/data_mem.sv
+```systemverilog
+mem_write = ex_mem_reg.mem_write
+```
 
-La señal `mem_write` controla si la operación es escritura. La lectura se usa para la etapa de write back cuando `wb_src = WB_MEM`.
-
----
+Cuando `CACHE_ENABLE = 0`, la jerarquía usa una memoria de bypass. Cuando `CACHE_ENABLE != 0`, la solicitud se atiende mediante L1-D, L2 y memoria principal.
 
 ### 5.5 Write Back
 
 La etapa WB escribe el resultado final en el banco de registros cuando `reg_write` está activo.
-
-El valor escrito se selecciona mediante `wb_src`.
 
 | Selector | Fuente                 |
 | -------- | ---------------------- |
@@ -320,15 +333,11 @@ El valor escrito se selecciona mediante `wb_src`.
 | `WB_PC4` | PC + 4                 |
 | `WB_SEC` | Resultado de `sec_alu` |
 
-Flujo:
-
-    wb_data → register_file[rd]
-
 El write back ocurre mediante:
 
-    wd3 = wb_data
-    we3 = mem_wb_reg.reg_write
-    rs3 = mem_wb_reg.rd_addr
+```text
+wb_data → register_file[rd]
+```
 
 ---
 
@@ -336,13 +345,17 @@ El write back ocurre mediante:
 
 La unidad de control se encuentra en:
 
-    src/cpu/control_unit.sv
+```text
+src/cpu/control_unit.sv
+```
 
 Recibe:
 
-    opcode
-    funct3
-    funct7
+```text
+opcode
+funct3
+funct7
+```
 
 Y genera:
 
@@ -359,7 +372,7 @@ Y genera:
 | `alu_op`    | Selecciona operación de ALU                               |
 | `sec_op`    | Selecciona operación de seguridad                         |
 
-La unidad de control es combinacional. No se implementa como FSM multiciclo; en su lugar, cada instrucción avanza por el pipeline y las señales de control viajan a través de los registros intermedios.
+La unidad de control es combinacional. Las señales de control viajan por los registros de pipeline junto con los datos de la instrucción.
 
 ---
 
@@ -367,23 +380,27 @@ La unidad de control es combinacional. No se implementa como FSM multiciclo; en 
 
 El siguiente valor del PC se selecciona con prioridad:
 
-    1. Branch tomado en EX
-    2. Jump PC-relative detectado en ID
-    3. Jump register detectado en ID
-    4. PC + 4
+```text
+1. Branch tomado en EX
+2. Jump PC-relative detectado en ID
+3. Jump register detectado en ID
+4. PC + 4
+```
 
 La lógica principal es:
 
-    if branch_taken:
-        next_pc = branch_target
-    else if pc_src == PC_IMM:
-        next_pc = if_id_reg.pc + imm
-    else if pc_src == PC_JR:
-        next_pc = rs1_data
-    else:
-        next_pc = PC + 4
+```text
+if branch_taken:
+    next_pc = branch_target
+else if pc_src == PC_IMM:
+    next_pc = if_id_reg.pc + imm
+else if pc_src == PC_JR:
+    next_pc = rs1_data
+else:
+    next_pc = PC + 4
+```
 
-La unidad de riesgos puede detener el PC mediante la señal `pc_write`.
+La unidad de riesgos puede detener el PC mediante `pc_write = 0`, especialmente ante hazards RAW o stalls generados por la jerarquía de caché.
 
 ---
 
@@ -391,29 +408,11 @@ La unidad de riesgos puede detener el PC mediante la señal `pc_write`.
 
 La unidad de forwarding se encuentra en:
 
-    src/cpu/forwarding_unit.sv
+```text
+src/cpu/forwarding_unit.sv
+```
 
 Su función es reducir riesgos de datos reenviando resultados recientes hacia la etapa EX.
-
-Entradas principales:
-
-| Entrada            | Descripción                               |
-| ------------------ | ----------------------------------------- |
-| `id_ex_rs1`        | Registro fuente 1 de la instrucción en EX |
-| `id_ex_rs2`        | Registro fuente 2 de la instrucción en EX |
-| `ex_mem_rd`        | Registro destino de la instrucción en MEM |
-| `ex_mem_reg_write` | Indica si EX/MEM escribirá registro       |
-| `mem_wb_rd`        | Registro destino de la instrucción en WB  |
-| `mem_wb_reg_write` | Indica si MEM/WB escribirá registro       |
-
-Salidas:
-
-| Salida      | Descripción               |
-| ----------- | ------------------------- |
-| `forward_a` | Selección para operando A |
-| `forward_b` | Selección para operando B |
-
-Codificación usada:
 
 | Valor | Fuente                           |
 | ----- | -------------------------------- |
@@ -423,10 +422,12 @@ Codificación usada:
 
 Esto permite resolver dependencias como:
 
-    add x5, x1, x2
-    sub x6, x5, x3
+```asm
+add x5, x1, x2
+sub x6, x5, x3
+```
 
-sin esperar a que `x5` sea escrito definitivamente en el banco de registros.
+sin esperar necesariamente a que `x5` sea escrito definitivamente en el banco de registros.
 
 ---
 
@@ -434,7 +435,9 @@ sin esperar a que `x5` sea escrito definitivamente en el banco de registros.
 
 La unidad de riesgos se encuentra en:
 
-    src/cpu/hazard_unit.sv
+```text
+src/cpu/hazard_unit.sv
+```
 
 Genera señales para controlar stalls y flushes:
 
@@ -445,17 +448,109 @@ Genera señales para controlar stalls y flushes:
 | `if_id_flush` | Limpia la instrucción en IF/ID                        |
 | `id_ex_flush` | Limpia la instrucción en ID/EX                        |
 
-La unidad recibe información sobre los registros fuente de la instrucción en ID, los registros destino de instrucciones en etapas posteriores y señales de control como `branch_taken` y `jump_taken`.
+La unidad considera tres fuentes principales de control:
 
-Su objetivo es evitar que el pipeline ejecute instrucciones con datos inválidos o que conserve instrucciones incorrectas después de un salto.
+| Caso                 | Acción principal                                             |
+| -------------------- | ------------------------------------------------------------ |
+| `cache_stall = 1`    | Congela PC e IF/ID; evita avance del pipeline                |
+| RAW hazard           | Congela PC e IF/ID; inserta burbuja en ID/EX                 |
+| Branch tomado        | Hace flush de IF/ID e ID/EX                                  |
+| Jump tomado          | Hace flush de IF/ID                                          |
+
+El stall por caché tiene prioridad sobre los demás casos porque representa una solicitud de memoria aún no resuelta.
 
 ---
 
-## 10. Bóveda de llaves
+## 10. Jerarquía de memoria
+
+La jerarquía de memoria se implementa en:
+
+```text
+src/cpu/cache_hierarchy.sv
+src/cpu/cache_ctrl.sv
+src/cpu/cache_l1d.sv
+src/cpu/cache_l2.sv
+src/cpu/main_mem_model.sv
+src/cpu/mem_write_buffer.sv
+```
+
+La ruta normal de un acceso de datos es:
+
+```text
+Pipeline MEM → cache_ctrl → L1-D → L2 → write buffer / main memory
+```
+
+Cuando la caché está deshabilitada, `cache_hierarchy.sv` enruta las solicitudes hacia una memoria de bypass, útil para comparar resultados funcionales con y sin caché.
+
+### 10.1 L1-D
+
+| Parámetro       | Valor                                      |
+| --------------- | ------------------------------------------ |
+| Tamaño          | 4 KB                                       |
+| Asociatividad   | 2-way set associative                      |
+| Sets            | 64                                         |
+| Línea           | 32 bytes / 8 palabras de 32 bits           |
+| Política write  | Write-back                                 |
+| Miss de store   | Write-allocate                             |
+| Reemplazo       | LRU con 1 bit por set                      |
+
+### 10.2 L2
+
+| Parámetro       | Valor                                      |
+| --------------- | ------------------------------------------ |
+| Tamaño          | 16 KB                                      |
+| Asociatividad   | 4-way set associative                      |
+| Sets            | 128                                        |
+| Línea           | 32 bytes / 8 palabras de 32 bits           |
+| Política write  | Write-back                                 |
+| Reemplazo       | Pseudo-LRU de 3 bits por set               |
+
+### 10.3 Memoria principal
+
+La memoria principal se modela en `main_mem_model.sv` como una memoria de palabras de 32 bits con transferencias por línea completa de 256 bits.
+
+| Parámetro       | Valor base                                  |
+| --------------- | ------------------------------------------- |
+| Línea transferida | 256 bits / 32 bytes                       |
+| Latencia          | 25 ciclos                                 |
+| Inicialización    | `$readmemh` mediante `INITIAL_MEM`         |
+| Transacción       | Pulso `req`, espera, pulso `ready`         |
+
+La implementación modela el costo temporal de memoria externa mediante espera multiciclo en simulación. Esto permite generar stalls prolongados medibles sin modificar la ISA.
+
+---
+
+## 11. Integración caché-pipeline
+
+La jerarquía de caché expone la señal:
+
+```systemverilog
+cache_stall
+```
+
+Esta señal se conecta a la unidad de riesgos. Cuando `cache_stall = 1`, la unidad de riesgos congela el PC y el registro IF/ID para evitar que el procesador avance mientras el acceso de memoria está pendiente.
+
+Comportamiento general:
+
+| Caso                  | Efecto sobre el pipeline                                      |
+| --------------------- | ------------------------------------------------------------- |
+| L1 hit                | No se agregan stalls                                           |
+| L1 miss + L2 hit      | Se mantiene `cache_stall` hasta llenar L1                     |
+| L1 miss + L2 miss     | Se accede a memoria principal y se mantiene el stall          |
+| Dirty L1 eviction     | La línea modificada se escribe de vuelta hacia L2             |
+| Dirty L2 eviction     | La línea se encola en el write buffer para drenaje a memoria  |
+
+El controlador de caché usa una FSM interna para secuenciar los casos de miss, write-back, fetch de memoria, llenado de L2 y llenado de L1.
+
+---
+
+## 12. Bóveda de llaves
 
 La bóveda de llaves se implementa en:
 
-    src/cpu/key_vault.sv
+```text
+src/cpu/key_vault.sv
+```
 
 Parámetros principales:
 
@@ -465,74 +560,56 @@ Parámetros principales:
 | `KEYS`          | 4                 | Cantidad de llaves            |
 | `WORDS_PER_KEY` | 4                 | Palabras de 32 bits por llave |
 
-La bóveda se modela como un arreglo interno:
+La bóveda se modela como un arreglo de 16 palabras de 32 bits. La escritura solo ocurre cuando:
 
-    vault[0 : KEYS * WORDS_PER_KEY - 1]
+```text
+vault_we = 1
+auth_en = 1
+```
 
-Con los parámetros actuales:
+La dirección se toma de los bits bajos del operando usado como índice:
 
-    4 llaves * 4 palabras por llave = 16 palabras de 32 bits
-
-Esto equivale a cuatro llaves de 128 bits, aunque el acceso se realiza por palabras de 32 bits.
-
-### 10.1 Escritura en la bóveda
-
-La escritura ocurre cuando:
-
-    vault_we = 1
-    auth_en = 1
-
-La dirección de escritura se toma de los bits bajos del operando usado como índice:
-
-    addr = rs2_data[3:0]
-
-El dato escrito es:
-
-    wdata = rs1_data
-
-Esto corresponde a la instrucción:
-
-    ldk rs1, rs2
-
-### 10.2 Lectura desde la bóveda
-
-La lectura es combinacional y solo devuelve un valor distinto de cero si el procesador está autenticado:
-
-    k_out = auth_en ? vault[addr] : 0
-
-El valor `k_out` se captura en el registro `ID/EX` y se entrega a `sec_alu`.
+```text
+addr = rs2_data[3:0]
+```
 
 ---
 
-## 11. Autenticación
+## 13. Autenticación
 
 El procesador mantiene un bit interno de autenticación:
 
-    auth_bit
+```text
+auth_bit
+```
 
-Este bit se actualiza cuando se ejecuta una instrucción `auth`.
+Este bit se actualiza cuando se ejecuta una instrucción `auth`. La contraseña esperada es:
 
-La contraseña esperada es:
-
-    0xDEADBEEF
+```text
+0xDEADBEEF
+```
 
 Comportamiento:
 
-    if sec_op == SEC_AUTH:
-        if rs1_data == 0xDEADBEEF:
-            auth_bit = 1
-        else:
-            auth_bit = 0
+```text
+if sec_op == SEC_AUTH:
+    if rs1_data == 0xDEADBEEF:
+        auth_bit = 1
+    else:
+        auth_bit = 0
+```
 
-Si `auth_bit = 0`, la bóveda no entrega llaves y no permite escrituras. Además, `sec_alu` bloquea operaciones de seguridad no autorizadas.
+Si `auth_bit = 0`, la bóveda no permite escritura y las operaciones de seguridad dependientes de llave no producen resultados útiles.
 
 ---
 
-## 12. ALU de seguridad
+## 14. ALU de seguridad
 
 La ALU de seguridad se encuentra en:
 
-    src/cpu/sec_alu.sv
+```text
+src/cpu/sec_alu.sv
+```
 
 Entradas principales:
 
@@ -544,107 +621,111 @@ Entradas principales:
 | `sec_op`  | Operación de seguridad        |
 | `auth_en` | Estado de autenticación       |
 
-Salidas:
-
-| Salida      | Descripción            |
-| ----------- | ---------------------- |
-| `result`    | Resultado de seguridad |
-| `exception` | Señal de excepción     |
-
 Operaciones principales:
 
-### 12.1 `SEC_ADDK`
+### 14.1 `SEC_ADDK`
 
-    result = a + key
+```text
+result = a + key
+```
 
-### 12.2 `SEC_XORK`
+### 14.2 `SEC_XORK`
 
-    result = a ^ key
+```text
+result = a ^ key
+```
 
-### 12.3 `SEC_TEA`
+### 14.3 `SEC_TEA`
 
-    result = ((a << 4) + key) ^ b ^ ((a >> 5) + key)
+```text
+result = ((a << 4) + key) ^ b ^ ((a >> 5) + key)
+```
 
-Esta operación implementa una primitiva inspirada en TEA. No ejecuta el cifrado completo por sí sola; los programas de cifrado deben construir las rondas y el recorrido de memoria usando instrucciones assembly.
-
-### 12.4 Detección de ataque cero
+### 14.4 Detección de ataque cero
 
 La ALU de seguridad incluye una defensa simple contra extracción directa de llaves mediante operaciones identidad.
 
 La señal `zero_attack_detected` se activa cuando:
 
-    a == 0
-    sec_op == SEC_ADDK o SEC_XORK
+```text
+a == 0
+sec_op == SEC_ADDK o SEC_XORK
+```
 
-Si ocurre una operación no autorizada o se detecta este patrón, el resultado se fuerza a cero.
-
-El módulo `cpu_top.sv` imprime un error y termina la simulación si `sec_exception` se activa.
+Si ocurre una operación no autorizada o se detecta este patrón, se activa `exception` y la simulación se detiene mediante `$fatal` desde `cpu_top.sv`.
 
 ---
 
-## 13. Memoria de instrucciones
+## 15. Memoria de instrucciones
 
 La memoria de instrucciones se encuentra en:
 
-    src/cpu/instr_mem.sv
+```text
+src/cpu/instr_mem.sv
+```
 
 Está parametrizada por:
 
-    PROGRAM_FILE
-    DEPTH
+```text
+PROGRAM_FILE
+DEPTH
+```
 
-El archivo del programa se carga mediante `$readmemh`.
+El programa se carga con `$readmemh`. El flujo principal de simulación permite pasar el archivo mediante plusarg:
 
-Ejemplo de ejecución:
-
-    make sv-cpu-exec PROGRAM=programs/hex/program.hex
-
-Durante los flujos de cifrado, el Makefile copia el programa correspondiente a:
-
-    programs/hex/program.hex
-
-para que la memoria de instrucciones lo cargue al iniciar la simulación.
+```bash
+make sv-cpu-exec PROGRAM=programs/hex/program.hex
+```
 
 ---
 
-## 14. Memoria de datos
+## 16. Memoria de datos y memoria principal
 
-La memoria de datos se encuentra en:
+El diseño distingue dos modos:
 
-    src/cpu/data_mem.sv
+| Modo                    | Uso                                                        |
+| ----------------------- | ---------------------------------------------------------- |
+| `CACHE_ENABLE = 0`      | Acceso a memoria de bypass dentro de `cache_hierarchy.sv`  |
+| `CACHE_ENABLE != 0`     | Acceso mediante L1-D, L2, write buffer y memoria principal |
 
-Está parametrizada por:
-
-    INITIAL_MEM
-    DEPTH
-
-Permite cargar un archivo inicial de memoria generado por:
-
-    tools/load_file.py
-
-Ejemplo:
-
-    ./tools/load_file.py --input examples/test1.png --output memory.mem --address 0x1000
-
-Luego la simulación puede cargar esa memoria como RAM inicial para que el procesador opere sobre datos reales.
-
-Al finalizar la simulación, los testbenches generan un volcado de memoria:
-
-    build/sim/memory_dump.txt
-
-Ese archivo puede extraerse con:
-
-    tools/extract_data.py
+La memoria de bypass permite verificar que el resultado funcional sea el mismo con y sin caché. La memoria principal modelada permite observar el costo de misses y transferencias de líneas completas.
 
 ---
 
-## 15. Flujo de una instrucción ALU
+## 17. Contadores de rendimiento
+
+`cpu_top.sv` integra contadores del procesador y recibe contadores desde `cache_hierarchy.sv`.
+
+### 17.1 Contadores del procesador
+
+| Contador                  | Descripción                                                |
+| ------------------------- | ---------------------------------------------------------- |
+| `perf_instr_retired`      | Instrucciones que avanzan sin flush ni stall de caché      |
+| `perf_ctrl_stall_cycles`  | Slots perdidos por branches y jumps tomados                |
+
+### 17.2 Contadores de caché
+
+| Contador                  | Descripción                                                |
+| ------------------------- | ---------------------------------------------------------- |
+| `perf_l1_accesses`        | Solicitudes totales a L1-D                                 |
+| `perf_l1_hits`            | Hits en L1-D                                               |
+| `perf_l1_misses`          | Misses en L1-D                                             |
+| `perf_l2_hits`            | Hits en L2 después de miss en L1                           |
+| `perf_l2_misses`          | Misses en L2 que requieren memoria principal               |
+| `perf_mm_accesses`        | Accesos/fetches a memoria principal                        |
+| `perf_cache_stall_cycles` | Ciclos durante los cuales `cache_stall` estuvo activo      |
+
+El testbench `tb_cpu_program.sv` usa estos contadores para generar `build/sim/metrics.txt`.
+
+---
+
+## 18. Flujo de una instrucción ALU
 
 Ejemplo:
 
-    add x5, x3, x4
-
-Flujo por etapas:
+```asm
+add x5, x3, x4
+```
 
 | Etapa | Acción                                                           |
 | ----- | ---------------------------------------------------------------- |
@@ -656,45 +737,45 @@ Flujo por etapas:
 
 ---
 
-## 16. Flujo de una instrucción de memoria
+## 19. Flujo de una instrucción de memoria
 
 Ejemplo:
 
-    lw x5, 0(x10)
+```asm
+lw x5, 0(x10)
+```
 
-Flujo por etapas:
-
-| Etapa | Acción                           |
-| ----- | -------------------------------- |
-| IF    | Se lee la instrucción            |
-| ID    | Se decodifica y se lee `x10`     |
-| EX    | La ALU calcula `R[x10] + offset` |
-| MEM   | Se lee la memoria de datos       |
-| WB    | Se escribe el dato leído en `x5` |
+| Etapa | Acción                                      |
+| ----- | ------------------------------------------- |
+| IF    | Se lee la instrucción                       |
+| ID    | Se decodifica y se lee `x10`                |
+| EX    | La ALU calcula `R[x10] + offset`            |
+| MEM   | Se consulta L1-D/L2/memoria principal       |
+| WB    | Se escribe el dato leído en `x5`            |
 
 Ejemplo store:
 
-    sw x5, 0(x10)
+```asm
+sw x5, 0(x10)
+```
 
-Flujo por etapas:
-
-| Etapa | Acción                           |
-| ----- | -------------------------------- |
-| IF    | Se lee la instrucción            |
-| ID    | Se leen `x5` y `x10`             |
-| EX    | Se calcula la dirección efectiva |
-| MEM   | Se escribe `x5` en memoria       |
-| WB    | No hay escritura en registros    |
+| Etapa | Acción                                      |
+| ----- | ------------------------------------------- |
+| IF    | Se lee la instrucción                       |
+| ID    | Se leen `x5` y `x10`                        |
+| EX    | Se calcula la dirección efectiva            |
+| MEM   | Se escribe mediante la jerarquía de caché   |
+| WB    | No hay escritura en registros               |
 
 ---
 
-## 17. Flujo de una instrucción de seguridad
+## 20. Flujo de una instrucción de seguridad
 
 Ejemplo:
 
-    xork x5, x4, x3
-
-Flujo por etapas:
+```asm
+xork x5, x4, x3
+```
 
 | Etapa | Acción                                                                 |
 | ----- | ---------------------------------------------------------------------- |
@@ -706,72 +787,82 @@ Flujo por etapas:
 
 Para que la operación funcione correctamente, debe ejecutarse antes:
 
-    li      x1, 0xDEADBEEF
-    auth    x1
+```asm
+li      x1, 0xDEADBEEF
+auth    x1
+```
 
-y debe existir una llave cargada con:
+Y debe existir una llave cargada con:
 
-    ldk rs1, rs2
+```asm
+ldk rs1, rs2
+```
 
 ---
 
-## 18. Flujo de cifrado sobre archivos
+## 21. Flujo de cifrado sobre archivos
 
 Los programas de cifrado recorren una región de memoria cargada desde un archivo externo.
 
 Flujo general:
 
-    1. Autenticar el procesador con auth
-    2. Escribir una llave en la bóveda con ldk
-    3. Inicializar punteros de memoria
-    4. Leer palabras desde DMEM con lw
-    5. Aplicar xork o tea
-    6. Escribir resultados con sw
-    7. Repetir hasta llegar al final de la región
-    8. Extraer memoria final con extract_data.py
+```text
+1. Autenticar el procesador con auth
+2. Escribir una llave en la bóveda con ldk
+3. Inicializar punteros de memoria
+4. Leer palabras desde memoria con lw
+5. Aplicar xork o tea
+6. Escribir resultados con sw
+7. Repetir hasta llegar al final de la región
+8. Extraer memoria final con extract_data.py
+```
 
-El flujo automático del Makefile hace esto mediante:
+El flujo automático del Makefile usa objetivos como:
 
-    make verify-roundtrip FILE=test1.png
-    make verify-roundtrip-tea FILE=test1.png
+```bash
+make verify-roundtrip FILE=test2.png
+make verify-roundtrip-tea FILE=test2.png
+```
 
 ---
 
-## 19. Manejo de excepciones de seguridad
+## 22. Manejo de excepciones de seguridad
 
-La señal `exception` de `sec_alu` se usa para reportar operaciones de seguridad inválidas o no autorizadas.
+La señal `exception` de `sec_alu` reporta operaciones de seguridad inválidas o no autorizadas.
 
 En `cpu_top.sv`, si `sec_exception` se activa, se ejecuta:
 
-    $display("SECURITY ERROR: Unauthorized operation or zero-attack detected.");
-    $fatal(1);
+```systemverilog
+$display("SECURITY ERROR: Unauthorized operation or zero-attack detected.");
+$fatal(1);
+```
 
-Esto detiene la simulación. En la versión actual no se implementa un mecanismo de recuperación de excepción; el error se considera fatal durante la simulación.
+Esto detiene la simulación. En la versión actual no se implementa recuperación de excepción; el error se considera fatal durante simulación.
 
 ---
 
-## 20. Justificación de decisiones de diseño
+## 23. Justificación de decisiones de diseño
 
 | Decisión                             | Justificación                                                                    |
 | ------------------------------------ | -------------------------------------------------------------------------------- |
 | Instrucciones de 32 bits             | Simplifican fetch, decode y cálculo del PC                                       |
-| Separación IMEM/DMEM                 | Facilita cargar programas y datos por separado                                   |
-| Pipeline lógico de 5 etapas          | Permite organizar claramente IF, ID, EX, MEM y WB                                |
-| Registros de pipeline                | Mantienen datos y señales de control entre etapas                                |
+| ISA sin cambios respecto al PG1      | Permite comparar mejoras microarquitecturales sin alterar semántica              |
+| Pipeline de 5 etapas                 | Permite organizar IF, ID, EX, MEM y WB de forma clásica                          |
 | Forwarding                           | Reduce stalls por dependencias de datos                                          |
-| Hazard unit                          | Controla stalls y flushes en branches, jumps y dependencias                      |
-| Bóveda de llaves separada            | Evita que las llaves sean tratadas como memoria normal                           |
-| Autenticación por `auth`             | Protege operaciones de seguridad                                                 |
+| Hazard unit                          | Controla stalls y flushes en branches, jumps, RAW hazards y misses de caché      |
+| L1-D 2-way                           | Balance entre simplicidad de implementación y reducción de conflictos            |
+| L2 4-way                             | Reduce misses de capacidad/conflicto antes de acceder a memoria principal        |
+| Write-back                           | Disminuye tráfico hacia niveles inferiores                                       |
+| Write-allocate en L1                 | Aprovecha localidad temporal después de stores                                   |
+| Write buffer                         | Permite drenar evictions sucias sin bloquear innecesariamente algunas lecturas    |
 | `sec_alu` separada de la ALU general | Mantiene modularidad entre operaciones comunes y criptográficas                  |
-| TEA como primitiva                   | Reduce complejidad de hardware frente a una implementación completa de 32 rondas |
+| TEA como primitiva                   | Reduce complejidad de hardware frente a una instrucción completa de 32 rondas     |
 
 ---
 
-## 21. Diferencias respecto a una implementación multiciclo
+## 24. Diferencias respecto a una implementación multiciclo
 
 Aunque el ISA puede explicarse mediante las etapas clásicas IF, ID, EX, MEM y WB, la implementación actual no usa una FSM multiciclo que ejecute una sola instrucción a la vez. En su lugar, utiliza registros de pipeline para mantener varias instrucciones en diferentes etapas.
-
-Por lo tanto:
 
 | Aspecto                   | Multiciclo clásico           | Implementación actual                         |
 | ------------------------- | ---------------------------- | --------------------------------------------- |
@@ -780,17 +871,20 @@ Por lo tanto:
 | Riesgos de datos          | No aparecen igual            | Requieren forwarding y hazard unit            |
 | Branches                  | Se resuelven secuencialmente | Pueden requerir flush                         |
 | Throughput                | Menor                        | Mayor cuando no hay stalls                    |
+| Memoria                   | Acceso secuencial simple     | Jerarquía de caché con stalls dinámicos       |
 
 ---
 
-## 22. Notas y limitaciones
+## 25. Notas y limitaciones
 
 - La ALU de seguridad implementa una primitiva estilo TEA, no un cifrado TEA completo por sí sola.
 - El cifrado completo se construye en software mediante programas assembly.
 - La bóveda almacena palabras de 32 bits; cuatro palabras forman una llave de 128 bits.
 - Las instrucciones de seguridad requieren autenticación previa.
 - Las operaciones no autorizadas pueden detener la simulación mediante `$fatal`.
-- El diseño actual usa forwarding y hazard detection, pero no implementa predicción de saltos.
+- El diseño actual usa forwarding y hazard detection.
 - Los saltos condicionales se resuelven en la etapa EX.
 - Los saltos incondicionales pueden redirigir el PC desde la etapa ID.
-- La memoria de datos y la memoria de instrucciones están separadas.
+- La memoria de instrucciones y la memoria de datos se mantienen separadas.
+- El modelo de memoria principal reproduce latencia multiciclo; el cruce explícito entre dominios de reloj puede documentarse como mejora futura si se requiere una simulación más cercana a hardware físico.
+- Los contadores actuales reportan accesos agregados de caché; el desglose read/write puede agregarse extendiendo `cache_ctrl.sv` con contadores separados para `mem_read` y `mem_write`.
