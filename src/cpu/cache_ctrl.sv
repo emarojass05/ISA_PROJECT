@@ -172,6 +172,13 @@ module cache_ctrl #(
     // (1 IDLE miss + 1 L2_LOOKUP + 5 L2_WAIT + 1 L1_FILL = 8 stall cycles).
     logic [2:0] l2_wait_count;
 
+    // ── Miss-completion guard ─────────────────────────────────────────────
+    // High for the single IDLE cycle right after a miss is serviced, while the
+    // just-completed request still lingers in MEM (the pipeline only advances
+    // once cache_stall drops). Without it that cycle would be miscounted as a
+    // second L1 access/hit on top of the original miss.
+    logic just_filled;
+
     // ── Performance counter registers ────────────────────────────────────
     logic [31:0] perf_l1_accesses_r;
     logic [31:0] perf_l1_hits_r;
@@ -206,6 +213,7 @@ module cache_ctrl #(
             lat_l2_hit_way     <= '0;
             mm_req_sent        <= 1'b0;
             l2_wait_count      <= '0;
+            just_filled        <= 1'b0;
             perf_l1_accesses_r <= '0;
             perf_l1_hits_r     <= '0;
             perf_l1_misses_r   <= '0;
@@ -314,9 +322,13 @@ module cache_ctrl #(
                 default: state <= IDLE;
             endcase
 
+            just_filled <= (state == L1_FILL);
+
             // ── Performance counter increments ───────────────────────────
-            // L1 access/hit/miss: one event per memory request arriving in IDLE
-            if (cache_enable && (mem_read || mem_write) && state == IDLE) begin
+            // L1 access/hit/miss: one event per memory request arriving in IDLE.
+            // just_filled skips the post-fill cycle where the already-counted
+            // request still sits in MEM and would otherwise read as a fresh hit.
+            if (cache_enable && (mem_read || mem_write) && state == IDLE && !just_filled) begin
                 perf_l1_accesses_r <= perf_l1_accesses_r + 1;
                 if (l1_hit)
                     perf_l1_hits_r <= perf_l1_hits_r + 1;
