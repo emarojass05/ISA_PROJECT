@@ -7,10 +7,12 @@
 //   cache_ctrl            hierarchy controller
 //     ├── cache_l1d       L1_D (2-way, 64 sets, 256 b/line)
 //     ├── cache_l2        L2 (unified, 4-way, 128 sets, 256 b/line)
-//     └── main_mem_model  
+//     ├── mem_write_buffer write buffer between L2 evictions and main memory
+//     └── main_mem_model
 //
 // Exposes only pipeline ports to cpu_top.
-// When cache_enable = 0, cache_ctrl directs operations to bypass_mem
+// When cache_enable = 0, cache_ctrl stays in IDLE so wb_enq and wb_rd_req
+// never assert — the write buffer remains empty and wb_empty = 1 throughout.
 // =============================================================================
 
 module cache_hierarchy #(
@@ -42,7 +44,11 @@ module cache_hierarchy #(
     output logic [31:0]      perf_l2_hits,
     output logic [31:0]      perf_l2_misses,
     output logic [31:0]      perf_mm_accesses,
-    output logic [31:0]      perf_stall_cycles
+    output logic [31:0]      perf_stall_cycles,
+
+    // Write buffer observability (used by tb_cpu_program to confirm all
+    // dirty evictions have reached main memory before the register dump)
+    output logic             wb_empty
 );
 
     // Internal signals cache_ctrl - cache_l1d
@@ -84,7 +90,17 @@ module cache_hierarchy #(
     logic [6:0]           l2_lru_set;       // $clog2(L2_SETS=128) = 7 bits
     logic [1:0]           l2_lru_way;
 
-    // Internal signals cache_ctrl - main_mem_model
+    // Internal signals cache_ctrl - mem_write_buffer (upstream enqueue/read)
+    logic                 wb_enq;
+    logic [XLEN-1:0]      wb_enq_addr;
+    logic [LINE_BITS-1:0] wb_enq_data;
+    logic                 wb_full;
+    logic                 wb_rd_req;
+    logic [XLEN-1:0]      wb_rd_addr;
+    logic                 wb_rd_ready;
+    logic [LINE_BITS-1:0] wb_rd_data;
+
+    // Internal signals mem_write_buffer - main_mem_model (downstream mm)
     logic                 mm_req;
     logic                 mm_we;
     logic [XLEN-1:0]      mm_addr;
@@ -188,13 +204,15 @@ module cache_hierarchy #(
         .l2_do_lru_update (l2_do_lru_update),
         .l2_lru_set       (l2_lru_set),
         .l2_lru_way       (l2_lru_way),
-        // Main memory
-        .mm_req           (mm_req),
-        .mm_we            (mm_we),
-        .mm_addr          (mm_addr),
-        .mm_wdata         (mm_wdata),
-        .mm_ready         (mm_ready),
-        .mm_rdata         (mm_rdata),
+        // Write buffer
+        .wb_enq           (wb_enq),
+        .wb_enq_addr      (wb_enq_addr),
+        .wb_enq_data      (wb_enq_data),
+        .wb_full          (wb_full),
+        .wb_rd_req        (wb_rd_req),
+        .wb_rd_addr       (wb_rd_addr),
+        .wb_rd_ready      (wb_rd_ready),
+        .wb_rd_data       (wb_rd_data),
         // Performance counters
         .perf_l1_accesses (perf_l1_accesses),
         .perf_l1_hits     (perf_l1_hits),
@@ -268,6 +286,34 @@ module cache_hierarchy #(
         .do_lru_update (l2_do_lru_update),
         .lru_set       (l2_lru_set),
         .lru_way       (l2_lru_way)
+    );
+
+    // Instance: mem_write_buffer
+    mem_write_buffer #(
+        .XLEN     (XLEN),
+        .LINE_BITS(LINE_BITS),
+        .DEPTH    (4)
+    ) u_wbuf (
+        .clk      (clk),
+        .rst      (rst),
+        .enq      (wb_enq),
+        .enq_addr (wb_enq_addr),
+        .enq_data (wb_enq_data),
+        .full     (wb_full),
+        .rd_req   (wb_rd_req),
+        .rd_addr  (wb_rd_addr),
+        .rd_ready (wb_rd_ready),
+        .rd_data  (wb_rd_data),
+        .empty    (wb_empty),
+        .mm_req   (mm_req),
+        .mm_we    (mm_we),
+        .mm_addr  (mm_addr),
+        .mm_wdata (mm_wdata),
+        .mm_ready (mm_ready),
+        .mm_rdata (mm_rdata),
+        .perf_wb_drains         (),
+        .perf_wb_conflict_drains(),
+        .perf_wb_full_stalls    ()
     );
 
     // Instance: main_mem_model

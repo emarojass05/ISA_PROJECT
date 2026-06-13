@@ -17,9 +17,10 @@
 //
 //   L2_LOOKUP ──L2 hit──────────────────────────────────→ L1_FILL
 //             ──L2 miss, victim clean──→ MEM_FETCH
-//             ──L2 miss, victim dirty──→ L2_WRITEBACK ──→ MEM_FETCH
+//             ──L2 miss, victim dirty, wb !full──enqueue victim──→ MEM_FETCH
+//             ──L2 miss, victim dirty, wb full──→ L2_LOOKUP (stall)
 //
-//   MEM_FETCH (waits 25 cycles for main memory) ──→ L2_FILL ──→ L1_FILL
+//   MEM_FETCH (waits ~25 cycles for write buffer read) ──→ L2_FILL ──→ L1_FILL
 //
 //   L1_FILL ──→ IDLE  (stall drops, pipeline resumes)
 //
@@ -27,7 +28,8 @@
 //   L1 hit         :  0 extra cycles  (resolved in IDLE)
 //   L2 hit         :  8 extra cycles  (L2_LOOKUP + L2_WAIT×5 + L1_FILL) — matches spec
 //   Main-mem fetch :  ≥29 extra cycles (L2_LOOKUP + MEM_FETCH×25 + L2_FILL + L1_FILL)
-//   Each dirty eviction adds another 25-cycle main-memory write.
+//   Dirty L2 eviction: victim enqueued to write buffer, drain is background
+//                      (no longer serialized in the critical path).
 //
 // Interface notes:
 //   - All cache arrays (cache_l1d, cache_l2, main_mem_model) are instantiated
@@ -102,13 +104,15 @@ module cache_ctrl #(
     output logic [6:0]            l2_lru_set,
     output logic [1:0]            l2_lru_way,
 
-    // ── Main memory interface ─────────────────────────────────────────────
-    output logic                  mm_req,
-    output logic                  mm_we,
-    output logic [XLEN-1:0]       mm_addr,
-    output logic [LINE_BITS-1:0]  mm_wdata,
-    input  logic                  mm_ready,
-    input  logic [LINE_BITS-1:0]  mm_rdata,
+    // ── Write buffer interface ────────────────────────────────────────────
+    output logic                  wb_enq,
+    output logic [XLEN-1:0]       wb_enq_addr,
+    output logic [LINE_BITS-1:0]  wb_enq_data,
+    input  logic                  wb_full,
+    output logic                  wb_rd_req,
+    output logic [XLEN-1:0]       wb_rd_addr,
+    input  logic                  wb_rd_ready,
+    input  logic [LINE_BITS-1:0]  wb_rd_data,
 
     // ── Performance counters (only active when cache_enable = 1) ─────────
     output logic [31:0]           perf_l1_accesses,   // total L1 requests
@@ -135,8 +139,7 @@ module cache_ctrl #(
         L1_WRITEBACK,  // write dirty L1 victim line into L2
         L2_LOOKUP,     // check whether the missed line is in L2
         L2_WAIT,       // stall 5 extra cycles to match 8-cycle L2 hit time spec
-        L2_WRITEBACK,  // write dirty L2 victim line to main memory
-        MEM_FETCH,     // fetch the missed line from main memory
+        MEM_FETCH,     // fetch the missed line from main memory via write buffer
         L2_FILL,       // install fetched line into L2
         L1_FILL        // install line into L1 (+ write word if it was a store miss)
     } state_t;
@@ -153,18 +156,15 @@ module cache_ctrl #(
     logic [XLEN-1:0]       lat_l1_vaddr;     // L1 victim line address (for L2 write-line)
     logic [LINE_BITS-1:0]  lat_l1_vdata;     // L1 victim line data
 
-    // ── Latched L2 miss info (captured in L2_LOOKUP when L2 misses) ──────
-    logic [XLEN-1:0]       lat_l2_vaddr;     // L2 victim address  (for MM write-back)
-    logic [LINE_BITS-1:0]  lat_l2_vdata;     // L2 victim data
+    // ── Main-memory request tracking ─────────────────────────────────────
+    // (see mm_req_sent below — kept together for clarity)
 
     // ── Line to install in L1 (set in L2_LOOKUP on hit, or in MEM_FETCH) ─
     logic [LINE_BITS-1:0]  lat_fill_line;    // 256-bit line heading for L1
     logic                  lat_from_l2_hit;  // 1 = line came from L2 (not MM)
     logic [1:0]            lat_l2_hit_way;   // L2 way that was hit (for PLRU update)
 
-    // ── Main-memory request tracking ─────────────────────────────────────
-    // main_mem_model requires req to be a single-cycle pulse.
-    // mm_req_sent goes high after we fire the pulse so we don't fire again.
+    // mm_req_sent goes high after wb_rd_req fires so we don't pulse it again.
     logic mm_req_sent;
 
     // ── L2 wait counter ───────────────────────────────────────────────────
@@ -201,8 +201,6 @@ module cache_ctrl #(
             lat_l1_vway        <= 1'b0;
             lat_l1_vaddr       <= '0;
             lat_l1_vdata       <= '0;
-            lat_l2_vaddr       <= '0;
-            lat_l2_vdata       <= '0;
             lat_fill_line      <= '0;
             lat_from_l2_hit    <= 1'b0;
             lat_l2_hit_way     <= '0;
@@ -254,6 +252,9 @@ module cache_ctrl #(
                 // ── L2_LOOKUP ────────────────────────────────────────────
                 // L2 hit / miss is combinational and stable now.
                 // Latch what we need and pick the path forward.
+                // On a dirty miss, enqueue the victim to the write buffer
+                // (combinational wb_enq fires this same cycle) and go straight
+                // to MEM_FETCH. If the buffer is full, stay here until it drains.
                 L2_LOOKUP: begin
                     if (l2_hit) begin
                         lat_fill_line   <= l2_hit_rdata_line;
@@ -262,13 +263,13 @@ module cache_ctrl #(
                         l2_wait_count   <= '0;
                         state           <= L2_WAIT;
                     end else begin
-                        lat_l2_vaddr    <= l2_victim_addr;
-                        lat_l2_vdata    <= l2_victim_data;
                         lat_from_l2_hit <= 1'b0;
-                        if (l2_victim_dirty)
-                            state <= L2_WRITEBACK;
-                        else
+                        if (l2_victim_dirty && wb_full) begin
+                            // Buffer full: re-lookup next cycle (idempotent stall).
+                            // cache_stall stays high because state != IDLE.
+                        end else begin
                             state <= MEM_FETCH;
+                        end
                     end
                 end
 
@@ -282,26 +283,14 @@ module cache_ctrl #(
                         l2_wait_count <= l2_wait_count + 1;
                 end
 
-                // ── L2_WRITEBACK ──────────────────────────────────────────
-                // Send the dirty L2 victim to main memory (write-back).
-                // mm_req fires for exactly one cycle, then we wait for ready.
-                L2_WRITEBACK: begin
-                    if (!mm_req_sent)
-                        mm_req_sent <= 1'b1;
-                    if (mm_ready) begin
-                        mm_req_sent <= 1'b0;
-                        state       <= MEM_FETCH;
-                    end
-                end
-
                 // ── MEM_FETCH ─────────────────────────────────────────────
-                // Fetch the missed cache line from main memory (25-cycle wait).
-                // mm_req fires for exactly one cycle, then we wait for ready.
+                // Fetch the missed cache line via the write buffer (~25-cycle wait).
+                // wb_rd_req fires for exactly one cycle, then we wait for wb_rd_ready.
                 MEM_FETCH: begin
                     if (!mm_req_sent)
                         mm_req_sent <= 1'b1;
-                    if (mm_ready) begin
-                        lat_fill_line <= mm_rdata;
+                    if (wb_rd_ready) begin
+                        lat_fill_line <= wb_rd_data;
                         mm_req_sent   <= 1'b0;
                         state         <= L2_FILL;
                     end
@@ -335,8 +324,9 @@ module cache_ctrl #(
                     perf_l1_misses_r <= perf_l1_misses_r + 1;
             end
 
-            // L2 hit/miss: one event per L2_LOOKUP cycle
-            if (state == L2_LOOKUP) begin
+            // L2 hit/miss: count only on first entry into L2_LOOKUP
+            // (the state re-loops when wb_full; only the first cycle is the real lookup)
+            if (state == L2_LOOKUP && (l2_hit || !l2_victim_dirty || !wb_full)) begin
                 if (l2_hit)
                     perf_l2_hits_r <= perf_l2_hits_r + 1;
                 else
@@ -453,12 +443,16 @@ module cache_ctrl #(
     assign l2_lru_set       = lat_line_addr[OFFSET_BITS + L2_INDEX_BITS - 1 : OFFSET_BITS];
     assign l2_lru_way       = lat_l2_hit_way;
 
-    // ── Main memory ───────────────────────────────────────────────────────
-    // mm_req is a single-cycle pulse: high only in the FIRST cycle of
-    // L2_WRITEBACK or MEM_FETCH, then held low while waiting for ready.
-    assign mm_req   = ((state == L2_WRITEBACK) || (state == MEM_FETCH)) && !mm_req_sent;
-    assign mm_we    = (state == L2_WRITEBACK);
-    assign mm_addr  = (state == L2_WRITEBACK) ? lat_l2_vaddr : lat_line_addr;
-    assign mm_wdata = lat_l2_vdata;
+    // ── Write buffer interface ────────────────────────────────────────────
+    // wb_enq is a single-cycle pulse fired during L2_LOOKUP when a dirty victim
+    // needs to be evicted and the buffer has space. l2_victim_addr/data are
+    // combinational and stable throughout L2_LOOKUP.
+    assign wb_enq      = (state == L2_LOOKUP) && !l2_hit && l2_victim_dirty && !wb_full;
+    assign wb_enq_addr = l2_victim_addr;
+    assign wb_enq_data = l2_victim_data;
+
+    // wb_rd_req is a single-cycle pulse on the first cycle of MEM_FETCH.
+    assign wb_rd_req  = (state == MEM_FETCH) && !mm_req_sent;
+    assign wb_rd_addr = lat_line_addr;
 
 endmodule
