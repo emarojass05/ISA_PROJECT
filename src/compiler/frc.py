@@ -1,4 +1,5 @@
 import argparse
+import difflib
 import sys
 from pathlib import Path
 
@@ -30,6 +31,63 @@ from src.compiler.ir.scheduler import schedule_program
 from src.compiler.ir.ir_codegen import IRCodeGenerator
 
 
+_DIFF_W = 72
+
+
+def _capture_ir(ir_program) -> "dict[str, list[str]]":
+    """Snapshot the IR body of every function as a list of strings."""
+    return {f.name: [str(i) for i in f.body] for f in ir_program.functions}
+
+
+def _show_ir_diff(pass_name: str,
+                  before: "dict[str, list[str]]",
+                  after:  "dict[str, list[str]]") -> None:
+    """Print a compact unified diff of IR changes introduced by a pass."""
+    W = _DIFF_W
+    print(f"\n{'═'*W}")
+    print(f"  IR DIFF  ·  {pass_name}")
+    print(f"{'═'*W}")
+
+    any_change = False
+    for fname, b_lines in before.items():
+        a_lines = after.get(fname, [])
+        if b_lines == a_lines:
+            continue
+        any_change = True
+        delta = len(a_lines) - len(b_lines)
+        sign  = f"+{delta}" if delta >= 0 else str(delta)
+        print(f"  func '{fname}'   {len(b_lines)} → {len(a_lines)} instr  ({sign})")
+        print(f"{'─'*W}")
+
+        hunks = list(difflib.unified_diff(
+            b_lines, a_lines,
+            fromfile="before", tofile="after",
+            lineterm="", n=2,
+        ))
+
+        shown = 0
+        for line in hunks:
+            if line.startswith("---") or line.startswith("+++"):
+                continue
+            if shown >= 60:
+                print(f"  ... ({len(hunks) - shown} more diff lines, use --ir to see full IR)")
+                break
+            if line.startswith("+"):
+                print(f"  +  {line[1:]}")
+            elif line.startswith("-"):
+                print(f"  -  {line[1:]}")
+            elif line.startswith("@@"):
+                print(f"  {line}")
+            else:
+                print(f"     {line[1:]}")
+            shown += 1
+        print()
+
+    if not any_change:
+        print(f"  (no changes)")
+    print(f"{'═'*W}")
+
+
 def _any_opt(args) -> bool:
     """True when at least one optimization pass is requested."""
     return args.O1 or args.O2 or args.rename or args.dce or (args.loopu is not None) or args.schedule
@@ -52,18 +110,28 @@ def _run_individual_passes(ir_program, args) -> None:
     instrs_before = sum(len(f.body) for f in ir_program.functions)
 
     if do_rename:
+        snap = _capture_ir(ir_program)
         rename_program(ir_program)
         propagate_copies_program(ir_program)
+        _show_ir_diff("rename + copy_propagation", snap, _capture_ir(ir_program))
     if do_dce:
+        snap = _capture_ir(ir_program)
         dce_program(ir_program)
+        _show_ir_diff("dead_code_elimination", snap, _capture_ir(ir_program))
     if do_loopu:
+        snap = _capture_ir(ir_program)
         unroll_program(ir_program, factor=factor)
         dce_program(ir_program)
+        _show_ir_diff(f"loop_unroll(factor={factor}) + dce", snap, _capture_ir(ir_program))
         if do_rename:
+            snap = _capture_ir(ir_program)
             rename_program(ir_program)
             propagate_copies_program(ir_program)
+            _show_ir_diff("rename + copy_propagation (post-unroll)", snap, _capture_ir(ir_program))
     if do_schedule:
+        snap = _capture_ir(ir_program)
         schedule_program(ir_program)
+        _show_ir_diff("instruction_scheduling", snap, _capture_ir(ir_program))
 
     instrs_after = sum(len(f.body) for f in ir_program.functions)
 
@@ -228,7 +296,9 @@ def compile_fr_source(args):
             if (args.O1 or args.O2) and not _has_individual(args):
                 # preset level — use full pipeline for detailed stats
                 opt_level = OptimizationLevel.O2 if args.O2 else OptimizationLevel.O1
+                snap = _capture_ir(ir_program)
                 opt_stats = optimize_program(ir_program, level=opt_level)
+                _show_ir_diff(opt_level.name, snap, _capture_ir(ir_program))
             else:
                 # individual flags (possibly combined with O1/O2)
                 _run_individual_passes(ir_program, args)
