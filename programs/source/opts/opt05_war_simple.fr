@@ -1,18 +1,22 @@
 $ opt05_war_simple.fr
-$ WAR multiple: a y b se leen para calcular c y d,
-$ luego se reescriben. El renamer permite reordenar las escrituras.
-$ a=4, b=6, c=a*b=24, d=a+b=10, a=c-d=14, b=c+d=34
-$ Resultado esperado: a + b = 14 + 34 = 48
-fonc [int] war_demo() {
-    [int] a = 4;
-    [int] b = 6;
-    [int] c = a * b;
-    [int] d = a + b;
-    a = c - d;
-    b = c + d;
-    ret a + b;
+$ Renaming -- secuencia WAR: p, q, r, s se calculan de a/b originales,
+$ luego a y b se redefinen; renaming rompe la dependencia falsa.
+$ a=6, b=4: p=24, q=10, r=2, s=36 -> a=34, b=72 -> extra=106
+$ Resultado esperado: 106
+
+fonc [int] war_sequence([int] ai, [int] bi) {
+    [int] a = ai;
+    [int] b = bi;
+    [int] p = a * b;
+    [int] q = a + b;
+    [int] r = a - b;
+    [int] s = a * a;
+    a = p + q;
+    b = r * s;
+    [int] extra = a + b;
+    ret extra;
 }
 
 fonc [int] main() {
-    ret war_demo();
+    ret war_sequence(6, 4);
 }

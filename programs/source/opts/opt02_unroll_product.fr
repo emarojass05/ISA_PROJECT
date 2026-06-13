@@ -1,18 +1,23 @@
 $ opt02_unroll_product.fr
-$ Loop unrolling: secuencia tipo fibonacci con trip-count 4.
-$ Dos variables actualizadas por iteracion — genera WAR interno.
-$ a=0, b=1 → 4 iters → a=3, b=5. Resultado esperado: 5
-fonc [int] fib_iter() {
-    [int] a = 0;
-    [int] b = 1;
-    pour ([int] i = 0; i < 4; i = i + 1) {
-        [int] t = a + b;
-        a = b;
-        b = t;
+$ Loop unrolling -- N variable pequeno, multiples temporales por iteracion.
+$ Serie cuadratica: total = sum(i*(i+1)*k) para i=0..n-1, con n=5, k=3.
+$ Terminos: 0,6,18,36,60 -> total=120
+$ Resultado esperado: 120
+
+fonc [int] quad_sum([int] n, [int] k) {
+    [int] total = 0;
+    [int] prev  = 0;
+    pour ([int] i = 0; i < n; i = i + 1) {
+        [int] next   = i + 1;
+        [int] pair   = i * next;
+        [int] contrib = pair * k;
+        [int] delta  = contrib - prev;
+        total = total + contrib;
+        prev  = contrib;
     }
-    ret b;
+    ret total;
 }
 
 fonc [int] main() {
-    ret fib_iter();
+    ret quad_sum(5, 3);
 }
