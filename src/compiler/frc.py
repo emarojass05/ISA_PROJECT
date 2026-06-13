@@ -22,7 +22,70 @@ from src.compiler.backend.encoder import assemble
 from src.compiler.ir.ir_generator import IRGenerator
 from src.compiler.ir.cfg import CFG
 from src.compiler.ir.optimizer import optimize_program, OptimizationLevel
+from src.compiler.ir.renamer import rename_program
+from src.compiler.ir.copy_propagation import propagate_copies_program
+from src.compiler.ir.dce import dce_program
+from src.compiler.ir.loop_unroller import unroll_program
+from src.compiler.ir.scheduler import schedule_program
 from src.compiler.ir.ir_codegen import IRCodeGenerator
+
+
+def _any_opt(args) -> bool:
+    """True when at least one optimization pass is requested."""
+    return args.O1 or args.O2 or args.rename or args.dce or (args.loopu is not None) or args.schedule
+
+
+def _has_individual(args) -> bool:
+    """True when any fine-grained pass flag is present."""
+    return args.rename or args.dce or (args.loopu is not None) or args.schedule
+
+
+def _run_individual_passes(ir_program, args) -> None:
+    """Apply the resolved pass set and print a minimal stats block."""
+    do_rename   = args.O1 or args.O2 or args.rename
+    do_dce      = args.O1 or args.O2 or args.dce
+    do_loopu    = args.O2 or (args.loopu is not None)
+    do_schedule = args.O2 or args.schedule
+    # --loopu N overrides the O2 default factor of 0
+    factor      = args.loopu if args.loopu is not None else 0
+
+    instrs_before = sum(len(f.body) for f in ir_program.functions)
+
+    if do_rename:
+        rename_program(ir_program)
+        propagate_copies_program(ir_program)
+    if do_dce:
+        dce_program(ir_program)
+    if do_loopu:
+        unroll_program(ir_program, factor=factor)
+        dce_program(ir_program)
+        if do_rename:
+            rename_program(ir_program)
+            propagate_copies_program(ir_program)
+    if do_schedule:
+        schedule_program(ir_program)
+
+    instrs_after = sum(len(f.body) for f in ir_program.functions)
+
+    # Build human-readable label
+    has_ind = _has_individual(args)
+    if args.O2 and not has_ind:
+        label = "O2"
+    elif args.O1 and not has_ind:
+        label = "O1"
+    else:
+        parts = (
+            (["rename"] if do_rename else []) +
+            (["dce"]    if do_dce    else []) +
+            ([f"loopu({factor})"] if do_loopu else []) +
+            (["sched"]  if do_schedule else [])
+        )
+        label = "+".join(parts) if parts else "O0"
+
+    print(f"\n========== OPTIMIZER ({label}) ==========")
+    print(f"Instructions before: {instrs_before}")
+    print(f"Instructions after : {instrs_after}")
+    print(f"Instructions saved : {instrs_before - instrs_after}")
 
 
 def is_asm_source(source_file):
@@ -145,7 +208,7 @@ def compile_fr_source(args):
             print("[OK] Symbol table built")
 
         # IR generation
-        _needs_ir = args.ir or args.ir_save or args.cfg or args.O1 or args.O2
+        _needs_ir = args.ir or args.ir_save or args.cfg or _any_opt(args)
         if _needs_ir:
             if args.verbose:
                 print("[INFO] Phase 3b: IR generation")
@@ -159,18 +222,23 @@ def compile_fr_source(args):
                 print("[OK] IR generated")
 
         # Optimization pipeline
-        if ir_program is not None and (args.O1 or args.O2):
-            opt_level = OptimizationLevel.O2 if args.O2 else OptimizationLevel.O1
+        if ir_program is not None and _any_opt(args):
             if args.verbose:
-                print(f"[INFO] Phase 3c: Optimization ({opt_level.name})")
-            opt_stats = optimize_program(ir_program, level=opt_level)
+                print("[INFO] Phase 3c: Optimization")
+            if (args.O1 or args.O2) and not _has_individual(args):
+                # preset level — use full pipeline for detailed stats
+                opt_level = OptimizationLevel.O2 if args.O2 else OptimizationLevel.O1
+                opt_stats = optimize_program(ir_program, level=opt_level)
+            else:
+                # individual flags (possibly combined with O1/O2)
+                _run_individual_passes(ir_program, args)
             if args.verbose:
                 print("[OK] Optimization complete")
 
         if args.verbose:
             print("[INFO] Phase 4: Assembly code generation")
 
-        if ir_program is not None and (args.O1 or args.O2):
+        if ir_program is not None and _any_opt(args):
             if args.verbose:
                 print("[INFO] Phase 4 (IR path): IR -> ASM via IRCodeGenerator")
             ir_codegen = IRCodeGenerator(
@@ -337,18 +405,45 @@ def main():
         help="Build and print the CFG (basic blocks) for each function",
     )
 
+    # preset levels
     opt_group = parser.add_mutually_exclusive_group()
     opt_group.add_argument(
         "--O1",
         action="store_true",
         dest="O1",
-        help="Enable O1 optimizations: register renaming + dead code elimination",
+        help="Preset: rename + DCE",
     )
     opt_group.add_argument(
         "--O2",
         action="store_true",
         dest="O2",
-        help="Enable O2 optimizations: O1 + loop unrolling + instruction scheduling",
+        help="Preset: rename + DCE + loop unrolling + scheduling",
+    )
+
+    # individual passes (combinable with each other and with --O1/--O2)
+    parser.add_argument(
+        "--rename",
+        action="store_true",
+        help="Static renaming to break WAR/WAW false dependencies",
+    )
+    parser.add_argument(
+        "--dce",
+        action="store_true",
+        help="Dead code elimination via liveness analysis",
+    )
+    parser.add_argument(
+        "--loopu",
+        nargs="?",
+        const=0,
+        default=None,
+        type=int,
+        metavar="FACTOR",
+        help="Loop unrolling; optional FACTOR (0 or omitted = heuristic)",
+    )
+    parser.add_argument(
+        "--schedule",
+        action="store_true",
+        help="Instruction scheduling within basic blocks",
     )
 
     args = parser.parse_args()
