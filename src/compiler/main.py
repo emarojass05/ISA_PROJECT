@@ -368,7 +368,7 @@ def parse_file(file_path: str):
 
 def print_ir_with_blocks(ir_program):
     """Print IR with visual basic-block boundaries derived from the CFG."""
-    SEP = "━" * 52
+    SEP = "=" * 52
     for ir_func in ir_program.functions:
         params_str = ", ".join(ir_func.params)
         print(f"\nfunction [{ir_func.return_type}] {ir_func.name}({params_str}):")
@@ -377,14 +377,14 @@ def print_ir_with_blocks(ir_program):
             pred_ids = [f"B{p.id}" for p in block.predecessors]
             succ_ids = [f"B{s.id}" for s in block.successors]
             print(f"  {SEP}")
-            print(f"  ┌─ Block {block.id}   preds={pred_ids}  succs={succ_ids}")
+            print(f"  +- Block {block.id}   preds={pred_ids}  succs={succ_ids}")
             for instr in block.instructions:
                 from src.compiler.ir.ir_types import IRLabel
                 if isinstance(instr, IRLabel):
-                    print(f"  │  {instr}:")
+                    print(f"  |  {instr}:")
                 else:
-                    print(f"  │      {instr}")
-            print(f"  └{'─' * 51}")
+                    print(f"  |      {instr}")
+            print(f"  +" + "-" * 51)
         print()
 
 
@@ -595,7 +595,7 @@ def main():
         if args.verbose:
             print("[OK] Symbol table built")
 
-        # ── IR generation (optional, does not replace ASM pipeline) ──────────
+        # -- IR generation (optional, does not replace ASM pipeline) ----------
         _needs_ir = args.ir or args.ir_save or args.cfg or args.O1 or args.O2
         if _needs_ir:
             if args.verbose:
@@ -609,7 +609,7 @@ def main():
             if args.verbose:
                 print("[OK] IR generated")
 
-        # ── Optimization pipeline ─────────────────────────────────────────────
+        # -- Optimization pipeline ---------------------------------------------
         opt_stats = None
         if ir_program is not None and (args.O1 or args.O2):
             if args.O2:
@@ -626,7 +626,7 @@ def main():
             )
             if args.verbose:
                 print(f"[OK] Optimization complete")
-        # ─────────────────────────────────────────────────────────────────────
+        # ---------------------------------------------------------------------
 
         if args.verbose:
             print("[INFO] Phase 4: Assembly code generation...")
@@ -693,7 +693,7 @@ def main():
         print(opt_stats)
 
     if args.ir and ir_program is not None:
-        print("\n========== IR (con bloques básicos) ==========")
+        print("\n========== IR (with basic blocks) ==========")
         print_ir_with_blocks(ir_program)
 
     if args.ir_save and ir_program is not None:

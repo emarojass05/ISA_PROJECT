@@ -1,16 +1,16 @@
 """
 tests/unit/test_ir_types.py
 
-Tests unitarios para las estructuras de datos de la IR.
+Unit tests for IR data structures.
 
-Qué se verifica:
-  1. defs() y uses() de cada instrucción (base para DCE y análisis de dependencias)
-  2. __str__ de cada instrucción (útil para debugging y dumps de IR)
-  3. rename() cambia los operandos correctamente (base para renombramiento)
-  4. IRFunction e IRProgram agrupan instrucciones y se imprimen bien
-  5. _is_literal no confunde literales con variables
+What is verified:
+  1. defs() and uses() for each instruction (foundation for DCE and dependency analysis)
+  2. __str__ for each instruction (useful for debugging and IR dumps)
+  3. rename() changes operands correctly (foundation for renaming)
+  4. IRFunction and IRProgram group instructions and print correctly
+  5. _is_literal does not confuse literals with variables
 
-Ejecutar:
+Run:
     python3 -m unittest tests/unit/test_ir_types.py -v
 """
 
@@ -18,7 +18,6 @@ import sys
 import os
 import unittest
 
-# Permite ejecutar desde la raíz del repo sin instalar el paquete
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from src.compiler.ir.ir_types import (
@@ -33,7 +32,7 @@ from src.compiler.ir.ir_program import IRFunction, IRProgram
 
 
 # ---------------------------------------------------------------------------
-# Tests de instrucciones aritméticas / lógicas
+# Arithmetic / logic instruction tests
 # ---------------------------------------------------------------------------
 
 class TestIRBinOp(unittest.TestCase):
@@ -63,7 +62,7 @@ class TestIRBinOp(unittest.TestCase):
         self.assertEqual(self.instr.right, "b")
 
     def test_all_operators_have_string(self):
-        """Todos los BinOp deben poder construirse e imprimirse."""
+        """All BinOp values must be constructable and printable."""
         for op in BinOp:
             instr = IRBinOp("t0", "a", op, "b")
             self.assertIn(op.value, str(instr))
@@ -88,7 +87,7 @@ class TestIRUnOp(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Tests de copia
+# Copy instruction tests
 # ---------------------------------------------------------------------------
 
 class TestIRCopy(unittest.TestCase):
@@ -96,13 +95,13 @@ class TestIRCopy(unittest.TestCase):
     def test_variable_src(self):
         instr = IRCopy(dest="t0", src="x")
         self.assertEqual(instr.defs(), {"t0"})
-        self.assertEqual(instr.uses(), {"x"})  # x es variable
+        self.assertEqual(instr.uses(), {"x"})  # x is a variable
         self.assertEqual(str(instr), "t0 = x")
 
     def test_literal_src_not_in_uses(self):
-        """Los literales numéricos no son variables → no deben aparecer en uses()."""
+        """Numeric literals are not variables -> they must not appear in uses()."""
         instr = IRCopy(dest="t0", src="42")
-        self.assertEqual(instr.uses(), set())  # 42 es literal
+        self.assertEqual(instr.uses(), set())  # 42 is a literal
 
     def test_hex_literal_not_in_uses(self):
         instr = IRCopy(dest="t0", src="0xFF")
@@ -115,7 +114,7 @@ class TestIRCopy(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Tests de memoria
+# Memory instruction tests
 # ---------------------------------------------------------------------------
 
 class TestIRLoad(unittest.TestCase):
@@ -136,12 +135,12 @@ class TestIRStore(unittest.TestCase):
 
     def test_basic(self):
         instr = IRStore(base="arr", offset=8, src="t1")
-        self.assertEqual(instr.defs(), set())       # store no define variables
+        self.assertEqual(instr.defs(), set())       # store does not define variables
         self.assertEqual(instr.uses(), {"arr", "t1"})
         self.assertEqual(str(instr), "mem[arr + 8] = t1")
 
     def test_has_side_effect(self):
-        """IRStore siempre tiene efecto de lado → DCE no puede eliminarlo."""
+        """IRStore always has a side effect -> DCE must not eliminate it."""
         instr = IRStore(base="arr", offset=0, src="t1")
         self.assertTrue(instr.has_side_effect)
 
@@ -152,7 +151,7 @@ class TestIRStore(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Tests de control de flujo
+# Control flow instruction tests
 # ---------------------------------------------------------------------------
 
 class TestIRLabel(unittest.TestCase):
@@ -207,7 +206,7 @@ class TestIRIfFalse(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Tests de llamadas a función
+# Function call instruction tests
 # ---------------------------------------------------------------------------
 
 class TestIRParam(unittest.TestCase):
@@ -273,7 +272,7 @@ class TestIRReturn(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Tests de _is_literal
+# _is_literal tests
 # ---------------------------------------------------------------------------
 
 class TestIsLiteral(unittest.TestCase):
@@ -295,7 +294,7 @@ class TestIsLiteral(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Tests de IRFunction e IRProgram
+# IRFunction and IRProgram tests
 # ---------------------------------------------------------------------------
 
 class TestIRFunction(unittest.TestCase):
@@ -322,10 +321,10 @@ class TestIRFunction(unittest.TestCase):
 class TestIRProgram(unittest.TestCase):
 
     def _make_program(self):
-        """Construye un IRProgram de ejemplo con factorial."""
+        """Build a sample IRProgram with factorial."""
         prog = IRProgram()
 
-        # factorial(n): if n<=1 return 1; else return n * factorial(n-1)
+        # factorial(n): if n <= 1 return 1; else return n * factorial(n-1)
         func = IRFunction(name="factorial", params=["n"], return_type="int")
         func.emit(IRLabel("FUNC_factorial"))
         func.emit(IRBinOp("t0", "n", BinOp.LE, "1"))
@@ -364,8 +363,8 @@ class TestIRProgram(unittest.TestCase):
 
     def test_full_defs_uses_pipeline(self):
         """
-        Simula el flujo que usará el análisis de liveness:
-        recolectar todos los defs y uses de una función.
+        Simulates the flow used by liveness analysis:
+        collect all defs and uses of a function.
         """
         prog = self._make_program()
         func = prog.get_function("factorial")
@@ -376,13 +375,11 @@ class TestIRProgram(unittest.TestCase):
             all_defs |= instr.defs()
             all_uses |= instr.uses()
 
-        # t0, t1, t2, t3 deben estar en defs
         self.assertIn("t0", all_defs)
         self.assertIn("t1", all_defs)
         self.assertIn("t2", all_defs)
         self.assertIn("t3", all_defs)
 
-        # n debe estar en uses (se lee varias veces)
         self.assertIn("n", all_uses)
 
 

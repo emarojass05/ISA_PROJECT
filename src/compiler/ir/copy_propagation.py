@@ -19,20 +19,17 @@ def propagate_copies_block(block: BasicBlock) -> int:
         original_uses = list(instr.uses())
         original_defs = list(instr.defs())
 
-        # Step 1: substitute uses
         for var in original_uses:
             if var in copy_map:
                 instr.rename_uses(var, copy_map[var])
                 subs += 1
 
-        # Step 2: kill stale entries for each definition
         for var in original_defs:
             copy_map.pop(var, None)
             stale = [k for k, v in copy_map.items() if v == var]
             for k in stale:
                 del copy_map[k]
 
-        # Step 3: record new copy if this is a simple variable-to-variable copy
         if (isinstance(instr, IRCopy)
                 and not _is_literal(instr.src)
                 and not instr.src.startswith("@")):

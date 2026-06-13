@@ -44,7 +44,6 @@ def compile_fr(source_path):
     )
     full = result.stdout + result.stderr
     ok   = "[ERR]" not in full and result.returncode == 0
-    # Extract ASM block between "=== ASM ===" and "=== HEX ==="
     asm_match = re.search(r"={5,} ASM ={5,}\n(.*?)={5,} HEX", full, re.DOTALL)
     asm = asm_match.group(1) if asm_match else ""
     return asm, full, ok
@@ -56,7 +55,7 @@ def check(name, condition, detail=""):
         print(f"    ✔  {name}")
         return True
     else:
-        print(f"    ✘  {name}" + (f"\n       → {detail}" if detail else ""))
+        print(f"    ✘  {name}" + (f"\n       -> {detail}" if detail else ""))
         return False
 
 
@@ -104,11 +103,11 @@ def assertions_t03(asm, output):
     ok &= check("Global address loaded via luhw/llhw",
                 "luhw" in asm or "lui" in asm,
                 "expected upper-half load for absolute address")
-    # Global must NOT be accessed as offset(sp) — counter is global
+    # Global must NOT be accessed as offset(sp) - counter is global
     # (sp stores are only for the saved ra and any local params)
     ok &= check("No spurious sp-relative store for global",
                 asm.count("sw t") <= asm.count("jal"),   # rough: fewer sp stores than calls
-                "too many sw t*, offset(sp) — global might be treated as local")
+                "too many sw t*, offset(sp) - global might be treated as local")
     return ok
 
 
@@ -132,7 +131,7 @@ def assertions_t05(asm, output):
     return ok
 
 
-# Map filename prefix → assertion function
+# Map filename prefix -> assertion function
 ASSERTIONS = {
     "t01": assertions_t01,
     "t02": assertions_t02,
@@ -155,9 +154,9 @@ def run_all(filter_prefix=None):
         prefix = prog.split("_")[0]  # e.g. "t01"
         path   = os.path.join(PROGRAMS, prog)
 
-        print(f"\n{'─'*60}")
+        print(f"\n{'-'*60}")
         print(f"  {prog}")
-        print(f"{'─'*60}")
+        print(f"{'-'*60}")
 
         asm, full_output, compiled = compile_fr(path)
 
@@ -173,7 +172,7 @@ def run_all(filter_prefix=None):
 
         assert_fn = ASSERTIONS.get(prefix)
         if assert_fn is None:
-            print(f"  ?  No assertions registered for '{prefix}' — skipping checks")
+            print(f"  ?  No assertions registered for '{prefix}' - skipping checks")
             results.append((prog, True))
             continue
 

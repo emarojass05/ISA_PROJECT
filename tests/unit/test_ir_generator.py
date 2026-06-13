@@ -1,18 +1,18 @@
 """
 tests/unit/test_ir_generator.py
 
-Tests del IRGenerator: compila programas .fr reales y verifica que la IR
-generada contiene las instrucciones correctas.
+IRGenerator tests: compiles real .fr programs and verifies that the
+generated IR contains the correct instructions.
 
-Qué se verifica:
-  1. factorial.fr    — funciones, llamadas recursivas, if/else, return
-  2. while loop      — WHILE labels, IRGoto, IRIfFalse
-  3. for loop        — FOR labels, forInit, forUpdate
-  4. arrays          — IRStore en declaración, IRLoad en acceso indexado
-  5. variables glob  — IRLoad/IRStore con prefijo @
-  6. Estructura      — cada función tiene su IRLabel de entrada
+What is verified:
+  1. factorial.fr    -- functions, recursive calls, if/else, return
+  2. while loop      -- WHILE labels, IRGoto, IRIfFalse
+  3. for loop        -- FOR labels, forInit, forUpdate
+  4. arrays          -- IRStore on declaration, IRLoad on indexed access
+  5. global vars     -- IRLoad/IRStore with @ prefix
+  6. Structure       -- each function has its entry IRLabel
 
-Ejecutar:
+Run:
     python3 -m unittest tests/unit/test_ir_generator.py -v
 """
 
@@ -41,11 +41,11 @@ from src.compiler.ir.ir_program import IRFunction, IRProgram
 
 
 # ---------------------------------------------------------------------------
-# Helper: compila un string de código fuente y devuelve el IRProgram
+# Helper: compile a source code string and return the IRProgram
 # ---------------------------------------------------------------------------
 
 def compile_to_ir(source_code: str) -> IRProgram:
-    """Escribe el código en un archivo temporal y lo compila a IR."""
+    """Write code to a temporary file and compile it to IR."""
     with tempfile.NamedTemporaryFile(suffix=".fr", mode="w",
                                      delete=False, encoding="utf-8") as f:
         f.write(textwrap.dedent(source_code))
@@ -68,17 +68,17 @@ def compile_to_ir(source_code: str) -> IRProgram:
 
 
 def instr_types(func: IRFunction):
-    """Retorna la lista de tipos de instrucciones de una función."""
+    """Return the list of instruction types for a function."""
     return [type(i).__name__ for i in func.body]
 
 
 def instrs_of_type(func: IRFunction, cls):
-    """Filtra instrucciones de un tipo específico."""
+    """Filter instructions of a specific type."""
     return [i for i in func.body if isinstance(i, cls)]
 
 
 # ---------------------------------------------------------------------------
-# 1. Factorial — funciones, recursión, if/else
+# 1. Factorial -- functions, recursion, if/else
 # ---------------------------------------------------------------------------
 
 class TestFactorial(unittest.TestCase):
@@ -118,12 +118,12 @@ class TestFactorial(unittest.TestCase):
     def test_factorial_aux_has_if_false(self):
         func = self.ir.get_function("factorial_aux")
         conds = instrs_of_type(func, IRIfFalse)
-        self.assertGreaterEqual(len(conds), 1, "Debe haber al menos un IRIfFalse para el if")
+        self.assertGreaterEqual(len(conds), 1, "Must have at least one IRIfFalse for the if")
 
     def test_factorial_aux_has_return(self):
         func = self.ir.get_function("factorial_aux")
         rets = instrs_of_type(func, IRReturn)
-        self.assertGreaterEqual(len(rets), 2, "Debe haber return en cada rama del if")
+        self.assertGreaterEqual(len(rets), 2, "Must have a return in each branch of the if")
 
     def test_recursive_call_has_param_and_call(self):
         func = self.ir.get_function("factorial_aux")
@@ -175,7 +175,7 @@ class TestWhileLoop(unittest.TestCase):
     def test_iffalse_exits_loop(self):
         conds = instrs_of_type(self.func, IRIfFalse)
         self.assertGreaterEqual(len(conds), 1)
-        # El target del IRIfFalse debe ser el label de fin del while
+        # The IRIfFalse target must be the while-end label
         target = conds[0].target
         self.assertIn("WHILE_END", target)
 
@@ -258,13 +258,13 @@ class TestIfElse(unittest.TestCase):
         self.assertEqual(len(rets), 2)
 
     def test_goto_skips_else(self):
-        """Debe haber un IRGoto que salta el bloque else."""
+        """There must be an IRGoto that skips the else block."""
         gotos = instrs_of_type(self.func, IRGoto)
         self.assertGreaterEqual(len(gotos), 1)
 
 
 # ---------------------------------------------------------------------------
-# 5. Variables globales
+# 5. Global variables
 # ---------------------------------------------------------------------------
 
 class TestGlobalVariables(unittest.TestCase):
@@ -282,20 +282,20 @@ class TestGlobalVariables(unittest.TestCase):
         cls.func = cls.ir.get_function("incrementar")
 
     def test_global_load_uses_at_prefix(self):
-        """Las variables globales se cargan con IRLoad base='@nombre'."""
+        """Global variables are loaded with IRLoad base='@name'."""
         loads = instrs_of_type(self.func, IRLoad)
         self.assertGreaterEqual(len(loads), 1)
         self.assertTrue(any(l.base == "@contador" for l in loads))
 
     def test_global_store_uses_at_prefix(self):
-        """Las variables globales se guardan con IRStore base='@nombre'."""
+        """Global variables are stored with IRStore base='@name'."""
         stores = instrs_of_type(self.func, IRStore)
         self.assertGreaterEqual(len(stores), 1)
         self.assertTrue(any(s.base == "@contador" for s in stores))
 
 
 # ---------------------------------------------------------------------------
-# 6. Variables locales
+# 6. Local variables
 # ---------------------------------------------------------------------------
 
 class TestLocalVariables(unittest.TestCase):
@@ -311,9 +311,9 @@ class TestLocalVariables(unittest.TestCase):
         cls.func = cls.ir.get_function("doble")
 
     def test_local_var_uses_copy(self):
-        """Las variables locales se asignan con IRCopy, no con IRStore."""
+        """Local variables are assigned with IRCopy, not IRStore."""
         copies = instrs_of_type(self.func, IRCopy)
-        # Debe haber al menos una copia hacia 'resultado'
+        # There must be at least one copy to 'resultado'
         self.assertTrue(any(c.dest == "resultado" for c in copies))
 
     def test_binop_add_present(self):
@@ -322,7 +322,7 @@ class TestLocalVariables(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 7. Llamadas a función con múltiples argumentos
+# 7. Function calls with multiple arguments
 # ---------------------------------------------------------------------------
 
 class TestFunctionCall(unittest.TestCase):
@@ -356,7 +356,7 @@ class TestFunctionCall(unittest.TestCase):
         func = self.ir.get_function("main")
         calls = instrs_of_type(func, IRCall)
         result_temp = calls[0].dest
-        # El resultado de la llamada debe usarse en algún lado
+        # The call result must be used somewhere
         all_uses = set()
         for instr in func.body:
             all_uses |= instr.uses()
@@ -364,7 +364,7 @@ class TestFunctionCall(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 8. Programa real — factorial.fr del repo
+# 8. Real program - factorial.fr from repo
 # ---------------------------------------------------------------------------
 
 class TestFactorialFile(unittest.TestCase):
@@ -376,7 +376,7 @@ class TestFactorialFile(unittest.TestCase):
 
     def test_file_compiles_to_ir(self):
         result = parse_file(self.FACTORIAL_PATH)
-        self.assertIsNotNone(result, "factorial.fr debe parsear correctamente")
+        self.assertIsNotNone(result, "factorial.fr must parse correctly")
         tree, _ = result
 
         symbol_table = SymbolTable()

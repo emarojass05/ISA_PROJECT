@@ -48,12 +48,10 @@ def rename_block(block: BasicBlock, state: RenamerState) -> None:
         original_uses = frozenset(instr.uses())
         original_defs = frozenset(instr.defs())
 
-        # Step 1: rename uses with current map
         for var in original_uses:
             if var in rename_map:
                 instr.rename_uses(var, rename_map[var])
 
-        # Step 2: handle definitions
         for var in original_defs:
             is_waw = var in defined_here      # written before -> WAW
             is_war = var in used_after_def    # read after prior def -> WAR
@@ -65,7 +63,7 @@ def rename_block(block: BasicBlock, state: RenamerState) -> None:
             else:
                 defined_here.add(var)
 
-        # Step 3: track post-definition reads for WAR detection.
+        # Track post-definition reads for WAR detection.
         # Only variables defined in this block count; live-in reads do not.
         for var in original_uses:
             if var in defined_here:
