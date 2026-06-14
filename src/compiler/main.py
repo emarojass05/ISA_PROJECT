@@ -388,6 +388,10 @@ def print_ir_with_blocks(ir_program):
         print()
 
 
+# Initial stack pointer set in ENTRY prologue (top of 65536-word data memory).
+_SP_INIT = 0x3FFFC
+
+
 def format_address(address):
     if address is None:
         return "-"
@@ -402,22 +406,76 @@ def print_symbol_table(symbol_table):
     if not symbols:
         print("[empty]")
         return
+
+    # Build per-function frame_size map so local word indices can be derived.
+    # frame_size is stored on the function symbol after the semantic pass.
+    func_frame = {
+        name: sym["frame_size"]
+        for (scope, name), sym in symbols.items()
+        if sym.get("kind") == "function" and "frame_size" in sym
+    }
+
+    # Column layout:
+    #   Offset/Addr  - for locals:  sp+0xNNNN (frame offset from sp)
+    #                  for globals: 0xNNNN    (absolute byte address)
+    #   Word         - word index in memory_dump.txt (byte_addr / 4)
+    #                  for locals:  derived from SP_INIT and frame_size (see footnote)
     print(
-        f"{'Scope':<15} {'Name':<15} {'Kind':<12} "
-        f"{'Type':<10} {'Address':<10} {'Size':<6} {'Line':<6}"
+        f"{'Scope':<15} {'Name':<15} {'Kind':<12} {'Type':<10} "
+        f"{'Offset/Addr':<14} {'Word in dump':<16} {'Size':<6} {'Line':<6}"
     )
+
+    has_local = False
+
     for (_, _), symbol in symbols.items():
-        scope = symbol.get("scope", "-")
-        name = symbol.get("name", "-")
-        kind = symbol.get("kind", "-")
+        scope     = symbol.get("scope", "-")
+        name      = symbol.get("name", "-")
+        kind      = symbol.get("kind", "-")
         type_name = symbol.get("type", "-")
-        address = format_address(symbol.get("address"))
-        size = symbol.get("size", "-")
-        line = symbol.get("line", "-")
+        address   = symbol.get("address")
+        size      = symbol.get("size", 1) or 1
+        line      = symbol.get("line", "-")
+        is_local  = symbol.get("is_local", False)
+
+        # Offset/Addr column
+        if address is None:
+            addr_str = "-"
+        elif is_local:
+            addr_str = f"sp+0x{address:04X}"
+        else:
+            addr_str = f"0x{address:04X}"
+
+        # Word column
+        if kind == "function" or address is None:
+            word_str = "-"
+        elif is_local:
+            frame_size = func_frame.get(scope)
+            if frame_size is not None:
+                start_word = (_SP_INIT - frame_size + address) // 4
+                if size > 1:
+                    word_str = f"{start_word}..{start_word + size - 1} (*)"
+                else:
+                    word_str = f"{start_word} (*)"
+                has_local = True
+            else:
+                word_str = "?"
+        else:
+            start_word = address // 4
+            if size > 1:
+                word_str = f"{start_word}..{start_word + size - 1}"
+            else:
+                word_str = str(start_word)
+
         print(
-            f"{scope:<15} {name:<15} {kind:<12} "
-            f"{type_name:<10} {address:<10} {size:<6} {line:<6}"
+            f"{scope:<15} {name:<15} {kind:<12} {type_name:<10} "
+            f"{addr_str:<14} {word_str:<16} {size:<6} {line:<6}"
         )
+
+    if has_local:
+        print()
+        print("  (*) Local word index assumes the function is called first from ENTRY")
+        print(f"      (sp = 0x{_SP_INIT:04X}). Formula: word = (0x{_SP_INIT:04X} - frame_size + offset) / 4.")
+        print("      For nested calls add the caller's frame_size / 4 to each local word index.")
 
 
 def print_reference_table(symbol_table):

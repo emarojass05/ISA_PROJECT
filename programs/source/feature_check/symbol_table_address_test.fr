@@ -1,0 +1,19 @@
+$ Feature: symbol table address display matches memory_dump word index (P2)
+$ Expected return (x3): 42
+$ Verify with ./frc -m: local symbols show sp+0xNNNN and Word column matches dump.
+$   Frame layout for main (frame_size=52 bytes):
+$     sp+0x0000 : saved ra
+$     sp+0x0004 : a       (word 65523 in dump)
+$     sp+0x0008 : list[0] (word 65524 in dump)
+$     ...
+$     sp+0x002C : list[9] (word 65533 in dump)
+$     sp+0x0030 : res     (word 65534 in dump)
+
+fonc [int] main() {
+    int a = 2026;
+    [int] *list(10);
+    int res = 42;
+    list@(0) = 1;
+    list@(9) = 2;
+    ret res;
+}
