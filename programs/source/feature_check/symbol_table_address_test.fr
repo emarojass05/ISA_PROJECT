@@ -10,9 +10,9 @@ $     sp+0x002C : list[9] (word 65533 in dump)
 $     sp+0x0030 : res     (word 65534 in dump)
 
 fonc [int] main() {
-    int a = 2026;
+    [int] a = 2026;
     [int] *list(10);
-    int res = 42;
+    [int] res = 42;
     list@(0) = 1;
     list@(9) = 2;
     ret res;
