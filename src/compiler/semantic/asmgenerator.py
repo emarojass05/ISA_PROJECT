@@ -625,10 +625,28 @@ class AsmGenerator(LanguageVisitor):
         return self.visit(ctx.logicalOrExpr())
 
     def visitLogicalOrExpr(self, ctx):
-        return self.emit_left_associative(ctx, {"||": "or"})
+        if ctx.getChildCount() == 1:
+            return self.visit(ctx.getChild(0))
+        result = self.emit_to_bool(self.visit(ctx.getChild(0)))
+        i = 1
+        while i < ctx.getChildCount():
+            right = self.emit_to_bool(self.visit(ctx.getChild(i + 1)))
+            self.emit(f"or {result}, {result}, {right}")
+            self.free_register(right)
+            i += 2
+        return result
 
     def visitLogicalAndExpr(self, ctx):
-        return self.emit_left_associative(ctx, {"&&": "and"})
+        if ctx.getChildCount() == 1:
+            return self.visit(ctx.getChild(0))
+        result = self.emit_to_bool(self.visit(ctx.getChild(0)))
+        i = 1
+        while i < ctx.getChildCount():
+            right = self.emit_to_bool(self.visit(ctx.getChild(i + 1)))
+            self.emit(f"and {result}, {result}, {right}")
+            self.free_register(right)
+            i += 2
+        return result
 
     def visitBitwiseOrExpr(self, ctx):
         return self.emit_left_associative(ctx, {"|": "or"})
@@ -677,8 +695,10 @@ class AsmGenerator(LanguageVisitor):
         text = ctx.getText()
 
         if text.startswith("!"):
-            self.emit(f"xori {value_register}, {value_register}, 1")
-            return value_register
+            # Logical NOT: 1 if operand == 0, else 0.  xori ,1 only flips bit 0.
+            zero_reg = self.allocate_register()
+            self.emit(f"addi {zero_reg}, zero, 0")
+            return self.emit_comparison(value_register, zero_reg, "beq")
 
         if text.startswith("-"):
             self.emit(f"sub {value_register}, zero, {value_register}")
@@ -860,6 +880,13 @@ class AsmGenerator(LanguageVisitor):
                 self.free_register(index_register)
 
         return address_register
+
+    def emit_to_bool(self, reg):
+        # Normalize reg to 0/1: 1 if reg != 0, else 0.
+        # emit_comparison frees reg and the zero register it allocates.
+        zero_reg = self.allocate_register()
+        self.emit(f"addi {zero_reg}, zero, 0")
+        return self.emit_comparison(reg, zero_reg, "bne")
 
     def emit_left_associative(self, ctx, operator_map):
         result_register = self.visit(ctx.getChild(0))

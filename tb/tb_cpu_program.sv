@@ -238,8 +238,11 @@ module tb_cpu_program;
                 dut.cache_stall
             );
 
-            // cycle_count > 10 avoids a false positive while the pipeline is filling
-            if (dut.if_instr == HALT_INSTR && cycle_count > 10) begin
+            // PC stability distinguishes the real self-loop from a speculative fetch.
+            // A speculative capture of j PROGRAM_END (from the jal shadow in ENTRY)
+            // appears for exactly one cycle: if_pc_cur != prev_pc that cycle.
+            // The real self-loop has a stable PC: if_pc_cur == prev_pc every cycle.
+            if (dut.if_instr == HALT_INSTR && dut.if_pc_cur == prev_pc) begin
                 $display("[HALT] PROGRAM_END detected at cycle %0d (pc=%08h)",
                          cycle_count,
                          dut.if_pc_cur);

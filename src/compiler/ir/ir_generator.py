@@ -374,10 +374,30 @@ class IRGenerator(LanguageVisitor):
         return self.visit(ctx.logicalOrExpr())
 
     def visitLogicalOrExpr(self, ctx):
-        return self._binop_chain(ctx)
+        if ctx.getChildCount() == 1:
+            return self.visit(ctx.getChild(0))
+        result = self._emit_to_bool(self.visit(ctx.getChild(0)))
+        i = 1
+        while i < ctx.getChildCount():
+            right = self._emit_to_bool(self.visit(ctx.getChild(i + 1)))
+            t = self._new_temp()
+            self._emit(IRBinOp(t, result, BinOp.OR, right))
+            result = t
+            i += 2
+        return result
 
     def visitLogicalAndExpr(self, ctx):
-        return self._binop_chain(ctx)
+        if ctx.getChildCount() == 1:
+            return self.visit(ctx.getChild(0))
+        result = self._emit_to_bool(self.visit(ctx.getChild(0)))
+        i = 1
+        while i < ctx.getChildCount():
+            right = self._emit_to_bool(self.visit(ctx.getChild(i + 1)))
+            t = self._new_temp()
+            self._emit(IRBinOp(t, result, BinOp.AND, right))
+            result = t
+            i += 2
+        return result
 
     def visitBitwiseOrExpr(self, ctx):
         return self._binop_chain(ctx)
@@ -399,6 +419,12 @@ class IRGenerator(LanguageVisitor):
 
     def visitMultiplicativeExpr(self, ctx):
         return self._binop_chain(ctx)
+
+    def _emit_to_bool(self, temp: str) -> str:
+        # Normalize temp to 0/1: emit temp != 0, return new temp.
+        result = self._new_temp()
+        self._emit(IRBinOp(result, temp, BinOp.NEQ, "0"))
+        return result
 
     def _binop_chain(self, ctx) -> str:
         """Handle left-associative binary expressions: a + b + c -> t0=a+b; t1=t0+c."""
