@@ -73,6 +73,10 @@ flowchart LR
 
 La integración clave del Proyecto Grupal II se ubica en la etapa MEM. En lugar de conectar la etapa MEM directamente a una memoria de datos simple, el procesador usa `cache_hierarchy.sv`, que decide si la solicitud se atiende desde una memoria de bypass o desde la jerarquía L1-D/L2/memoria principal.
 
+El datapath detallado se puede ver en :
+
+[Ver datapath del procesador](Datapath.pdf)
+
 ---
 
 ## 3. Módulo principal `cpu_top.sv`
