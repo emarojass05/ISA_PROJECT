@@ -366,7 +366,27 @@ class AsmGenerator(LanguageVisitor):
         name = ctx.ID().getText()
         symbol = self.get_symbol(name, ctx.ID().getSymbol().line)
 
-        if ctx.arrayLiteral():
+        if ctx.STRING_LITERAL():
+            from src.compiler.main import _parse_string_literal
+            chars = _parse_string_literal(ctx.STRING_LITERAL().getText())
+            for index, char_val in enumerate(chars):
+                if symbol.get("is_local"):
+                    element_offset = symbol["address"] + index * self.WORD_SIZE
+                    val_reg = self.allocate_register()
+                    self.emit_load_immediate(val_reg, char_val)
+                    self.emit_sp_store(val_reg, element_offset)
+                    self.free_register(val_reg)
+                else:
+                    addr_reg = self.allocate_register()
+                    val_reg = self.allocate_register()
+                    element_address = symbol["address"] + index * self.WORD_SIZE
+                    self.emit_load_immediate(addr_reg, element_address)
+                    self.emit_load_immediate(val_reg, char_val)
+                    self.emit(f"sw {val_reg}, 0({addr_reg})")
+                    self.free_register(val_reg)
+                    self.free_register(addr_reg)
+
+        elif ctx.arrayLiteral():
             expressions = ctx.arrayLiteral().expr()
 
             for index, expr_ctx in enumerate(expressions):
@@ -724,7 +744,10 @@ class AsmGenerator(LanguageVisitor):
             return register
 
         if ctx.STRING_LITERAL():
-            raise Exception("String literals are not supported in ASM generation yet")
+            raise Exception(
+                'String literals are not supported as expressions. '
+                'Declare a [char] array instead: [char] *name = "...";'
+            )
 
         if ctx.functionCall():
             return self.visit(ctx.functionCall())

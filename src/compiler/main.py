@@ -22,6 +22,26 @@ from src.compiler.ir.optimizer import optimize_program, OptimizationLevel
 from src.compiler.ir.ir_codegen import IRCodeGenerator
 
 
+def _parse_string_literal(raw: str) -> list:
+    """Decode a STRING_LITERAL token (with surrounding quotes) into a list of int char values.
+
+    Supported escape sequences: \\n \\t \\r \\\\ \\" \\0
+    No null terminator is appended; callers decide on termination convention.
+    """
+    s = raw[1:-1]
+    _ESC = {'n': 10, 't': 9, 'r': 13, '\\': 92, '"': 34, '0': 0}
+    chars = []
+    i = 0
+    while i < len(s):
+        if s[i] == '\\' and i + 1 < len(s):
+            chars.append(_ESC.get(s[i + 1], ord(s[i + 1])))
+            i += 2
+        else:
+            chars.append(ord(s[i]))
+            i += 1
+    return chars
+
+
 class CompilerErrorListener(ErrorListener):
     def __init__(self):
         super().__init__()
@@ -162,9 +182,14 @@ class SemanticTableBuilder(LanguageVisitor):
     def _get_array_size_and_dims(self, ctx):
         """Return (total_size, dims_list) for an array declaration.
 
-        For literal init: dims=[total] (flat 1D).
-        For sized decl:   dims=[d0, d1, ...] from comma-separated exprs.
+        For string literal:  dims=[n] where n = number of chars.
+        For array literal:   dims=[n] (flat 1D).
+        For sized decl:      dims=[d0, d1, ...] from comma-separated exprs.
         """
+        if ctx.STRING_LITERAL():
+            chars = _parse_string_literal(ctx.STRING_LITERAL().getText())
+            n = len(chars)
+            return n, [n]
         if ctx.arrayLiteral():
             n = len(ctx.arrayLiteral().expr())
             return n, [n]

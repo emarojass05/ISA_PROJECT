@@ -1,8 +1,9 @@
-$ Feature: string literal "..." used as expression value
-$ Expected return (x3): COMPILE_ERROR (string literals not supported in IR)
-$ This test intentionally probes the limitation
+$ string_literal.fr
+$ Acceptance test for P6: [char] array initialized from a string literal.
+$ Expected return (x3): 104  ('h' = 0x68)
 
-fonc [int] main() {
-    [char] *s = "hello";
-    ret 1;
+fonc [int] main()
+{
+    [char] *greeting = "hello";
+    ret greeting@(0);
 }

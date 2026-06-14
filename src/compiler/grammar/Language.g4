@@ -83,6 +83,7 @@ varDecl
 arrayDecl
     : typeSpec MUL ID LPAREN expr (COMMA expr)* RPAREN SEMICOLON
     | typeSpec MUL ID ASSIGN arrayLiteral SEMICOLON
+    | typeSpec MUL ID ASSIGN STRING_LITERAL SEMICOLON
     ;
 
 arrayLiteral

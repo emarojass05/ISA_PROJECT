@@ -219,7 +219,14 @@ class IRGenerator(LanguageVisitor):
         name   = ctx.ID().getText()
         symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
 
-        if ctx.arrayLiteral():
+        if ctx.STRING_LITERAL():
+            from src.compiler.main import _parse_string_literal
+            chars = _parse_string_literal(ctx.STRING_LITERAL().getText())
+            base = name if self._is_local(symbol) else f"@{name}"
+            for index, char_val in enumerate(chars):
+                self._emit(IRStore(base, index * WORD_SIZE, str(char_val)))
+
+        elif ctx.arrayLiteral():
             base = name if self._is_local(symbol) else f"@{name}"
             for index, expr_ctx in enumerate(ctx.arrayLiteral().expr()):
                 temp = self.visit(expr_ctx)
@@ -474,7 +481,10 @@ class IRGenerator(LanguageVisitor):
             return "1" if ctx.BOOL_LITERAL().getText() == "vrai" else "0"
 
         if ctx.STRING_LITERAL():
-            raise Exception("String literals are not supported in IR generation")
+            raise Exception(
+                'String literals are not supported as expressions. '
+                'Declare a [char] array instead: [char] *name = "...";'
+            )
 
         if ctx.functionCall():
             return self.visit(ctx.functionCall())
