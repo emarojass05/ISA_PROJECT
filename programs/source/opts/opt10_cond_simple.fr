@@ -1,19 +1,26 @@
 $ opt10_cond_simple.fr
-$ Condicional: scheduler reordena instrucciones independientes en cada rama.
-$ suma=3+5=8, prod=3*5=15. suma>prod? No → result=prod-suma=7
-$ Resultado esperado: 7
-fonc [int] diferencia([int] x, [int] y) {
-    [int] suma = x + y;
-    [int] prod = x * y;
+$ Scheduling -- 4 subcomputos independientes antes del condicional.
+$ x1,x2,x3,x4 no tienen dependencias entre si; scheduling puede reordenarlos.
+$ a=6,b=4,c=3,d=7: x1=21,x2=27,x3=20,x4=54
+$   sum1=48, sum2=74 -> sum1 < sum2 -> result = x3*x4 = 20*54 = 1080
+$ Resultado esperado: 1080
+
+fonc [int] sched_cond([int] a, [int] b, [int] c, [int] d) {
+    [int] x1 = a * b - c;
+    [int] x2 = c * d + a;
+    [int] x3 = a * a - b * b;
+    [int] x4 = b * c + d * a;
+    [int] sum1   = x1 + x2;
+    [int] sum2   = x3 + x4;
     [int] result = 0;
-    si (suma > prod) {
-        result = suma - prod;
+    si (sum1 > sum2) {
+        result = x1 + x2 + x3 + x4;
     } sinon {
-        result = prod - suma;
+        result = x3 * x4;
     }
     ret result;
 }
 
 fonc [int] main() {
-    ret diferencia(3, 5);
+    ret sched_cond(6, 4, 3, 7);
 }

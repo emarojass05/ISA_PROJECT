@@ -1,19 +1,21 @@
 $ opt08_dce_chain.fr
-$ DCE: waste4 lee result (vivo) pero waste4 mismo es muerto.
-$ DCE debe eliminar waste1/waste2/waste3/waste4 aunque waste4 use result.
-$ n=6, m=4, result=10 (vivo), waste1..4 son muertos.
-$ Resultado esperado: 10
-fonc [int] dce_chain() {
-    [int] n = 6;
-    [int] m = n - 2;
-    [int] result = m + n;
-    [int] waste1 = n * n;
-    [int] waste2 = m * m;
-    [int] waste3 = waste1 + waste2;
-    [int] waste4 = waste3 * result;
+$ DCE -- cadena profunda de 7 variables muertas. Solo result = n+m es vivo.
+$ DCE debe propagar la muerte desde d7 hasta d1 y eliminar toda la cadena.
+$ n=8, m=5: result = 13
+$ Resultado esperado: 13
+
+fonc [int] only_sum([int] n, [int] m) {
+    [int] result = n + m;
+    [int] d1 = n * m;
+    [int] d2 = d1 - m;
+    [int] d3 = d2 * n;
+    [int] d4 = d3 / m;
+    [int] d5 = d4 + result;
+    [int] d6 = d5 * d1;
+    [int] d7 = d6 - n;
     ret result;
 }
 
 fonc [int] main() {
-    ret dce_chain();
+    ret only_sum(8, 5);
 }

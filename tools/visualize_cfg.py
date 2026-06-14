@@ -31,8 +31,62 @@ from src.compiler.generated.LanguageParser import LanguageParser
 from src.compiler.semantic.symboltable import SymbolTable
 from src.compiler.ir.ir_generator import IRGenerator
 from src.compiler.ir.cfg import CFG
-from src.compiler.ir.optimizer import optimize_program, OptimizationLevel
+from src.compiler.ir.renamer import rename_program
+from src.compiler.ir.copy_propagation import propagate_copies_program
+from src.compiler.ir.dce import dce_program
+from src.compiler.ir.loop_unroller import unroll_program
+from src.compiler.ir.scheduler import schedule_program
 from src.compiler.ir.ir_types import IRReturn, IRIfTrue, IRIfFalse
+
+
+# -- Pass specification ----------------------------------------------------
+from collections import namedtuple
+_Passes = namedtuple("_Passes", ["rename", "dce", "loopu", "schedule", "factor", "label"])
+
+_O0 = _Passes(False, False, False, False, 0, "O0")
+_O2 = _Passes(True,  True,  True,  True,  0, "O2")
+
+
+def _resolve_passes(args) -> "_Passes":
+    """Map CLI flags to a _Passes spec."""
+    do_rename   = args.O1 or args.O2 or args.rename
+    do_dce      = args.O1 or args.O2 or args.dce
+    do_loopu    = args.O2 or (args.loopu is not None)
+    do_schedule = args.O2 or args.schedule
+    factor      = args.loopu if args.loopu is not None else 0
+
+    has_ind = args.rename or args.dce or (args.loopu is not None) or args.schedule
+    if args.O2 and not has_ind:
+        label = "O2"
+    elif args.O1 and not has_ind:
+        label = "O1"
+    else:
+        parts = (
+            (["rename"] if do_rename else []) +
+            (["dce"]    if do_dce    else []) +
+            ([f"loopu({factor})"] if do_loopu else []) +
+            (["sched"]  if do_schedule else [])
+        )
+        label = "+".join(parts) if parts else "O0"
+
+    return _Passes(do_rename, do_dce, do_loopu, do_schedule, factor, label)
+
+
+def _apply_passes(ir_program, passes: "_Passes") -> None:
+    """Apply optimization passes in canonical order."""
+    if passes.rename:
+        rename_program(ir_program)
+        propagate_copies_program(ir_program)
+    if passes.dce:
+        dce_program(ir_program)
+    if passes.loopu:
+        unroll_program(ir_program, factor=passes.factor)
+        dce_program(ir_program)
+        if passes.rename:
+            rename_program(ir_program)
+            propagate_copies_program(ir_program)
+    if passes.schedule:
+        schedule_program(ir_program)
 
 
 # -- Error listener --------------------------------------------------------
@@ -46,7 +100,7 @@ class _QuietErrorListener(ErrorListener):
 
 
 # -- Pipeline: source -> IRProgram -----------------------------------------
-def compile_to_ir(source_file: str, opt_level: OptimizationLevel):
+def compile_to_ir(source_file: str, passes: "_Passes"):
     input_stream = FileStream(source_file, encoding="utf-8")
     lexer = LanguageLexer(input_stream)
     lexer.removeErrorListeners()
@@ -79,8 +133,7 @@ def compile_to_ir(source_file: str, opt_level: OptimizationLevel):
     ir_gen.visit(tree)
     ir_program = ir_gen.get_ir()
 
-    if opt_level != OptimizationLevel.O0:
-        optimize_program(ir_program, level=opt_level)
+    _apply_passes(ir_program, passes)
 
     return ir_program
 
@@ -177,24 +230,21 @@ def render_cfg(ir_program, out_dir: Path, fmt: str, view: bool, opt_label: str) 
     return rendered
 
 
-# -- Comparison mode: O0 vs O2, HTML side by side -------------------------
-def render_compare(source_file: str, out_dir: Path, fmt: str, compare_with: str = "O2"):
+# -- Comparison mode: O0 vs passes_b, HTML side by side -------------------
+def render_compare(source_file: str, out_dir: Path, fmt: str, passes_b: "_Passes"):
     out_dir.mkdir(parents=True, exist_ok=True)
     source_name = Path(source_file).stem
 
     results = {}
-    compare_levels = [(OptimizationLevel.O0, "O0"), (OptimizationLevel.O2, "O2")]
-    if compare_with == "O1":
-        compare_levels = [(OptimizationLevel.O0, "O0"), (OptimizationLevel.O1, "O1")]
-    for level, label in compare_levels:
-        print(f"\n  Compilando {label}...")
-        ir = compile_to_ir(source_file, level)
+    for passes in [_O0, passes_b]:
+        print(f"\n  Compiling {passes.label}...")
+        ir = compile_to_ir(source_file, passes)
         cfgs = {}
         for ir_func in ir.functions:
             cfg = CFG.build_from_function(ir_func)
-            dot_src = _dot_blocks(cfg, ir_func.name, label)
+            dot_src = _dot_blocks(cfg, ir_func.name, passes.label)
             safe = ir_func.name.replace("/", "_").replace("\\", "_")
-            path = out_dir / f"cfg_{safe}_{label}"
+            path = out_dir / f"cfg_{safe}_{passes.label}"
             g = graphviz.Source(dot_src, filename=str(path), format="svg")
             svg_path = g.render(cleanup=True)
             with open(svg_path, "r", encoding="utf-8") as f:
@@ -206,15 +256,15 @@ def render_compare(source_file: str, out_dir: Path, fmt: str, compare_with: str 
                 "edges":  sum(len(b.successors) for b in cfg.blocks),
                 "instrs": sum(len(b.instructions) for b in cfg.blocks),
             }
-        results[label] = cfgs
-        print(f"  {label}: {len(cfgs)} function(s) processed")
+        results[passes.label] = cfgs
+        print(f"  {passes.label}: {len(cfgs)} function(s) processed")
 
     # -- HTML --------------------------------------------------------------
     sections = ""
-    level_b = "O1" if compare_with == "O1" else "O2"
+    label_b = passes_b.label
     for fn in results["O0"]:
         o0 = results["O0"].get(fn, {})
-        o2 = results[level_b].get(fn, {})
+        o2 = results[label_b].get(fn, {})
 
         def fmt_delta(d):
             if d < 0: return f'<span style="color:#28A745">▼ {abs(d)}</span>'
@@ -229,7 +279,7 @@ def render_compare(source_file: str, out_dir: Path, fmt: str, compare_with: str 
         <section>
           <h2>function: <code>{fn}</code></h2>
           <table class="diff">
-            <tr><th>Metric</th><th>O0 (no opt.)</th><th>{level_b} (opt.)</th><th>Delta</th></tr>
+            <tr><th>Metric</th><th>O0 (no opt.)</th><th>{label_b} (opt.)</th><th>Delta</th></tr>
             <tr><td>Basic blocks</td><td>{o0.get('blocks','-')}</td><td>{o2.get('blocks','-')}</td><td>{fmt_delta(db)}</td></tr>
             <tr><td>Edges</td><td>{o0.get('edges','-')}</td><td>{o2.get('edges','-')}</td><td>{fmt_delta(de)}</td></tr>
             <tr><td>IR instructions</td><td>{o0.get('instrs','-')}</td><td>{o2.get('instrs','-')}</td><td>{fmt_delta(di)}</td></tr>
@@ -240,7 +290,7 @@ def render_compare(source_file: str, out_dir: Path, fmt: str, compare_with: str 
               {o0.get('svg','<p>(not available)</p>')}
             </div>
             <div class="graph-box">
-              <h3>{level_b} - With optimizations</h3>
+              <h3>{label_b} - With optimizations</h3>
               {o2.get('svg','<p>(not available)</p>')}
             </div>
           </div>
@@ -300,15 +350,26 @@ def main():
         epilog=__doc__,
     )
     ap.add_argument("source",    help="Source .fr file")
-    ap.add_argument("--O1",      action="store_true", help="Optimize with O1")
-    ap.add_argument("--O2",      action="store_true", help="Optimize with O2")
+
+    # preset levels
+    preset = ap.add_mutually_exclusive_group()
+    preset.add_argument("--O1", action="store_true", help="Preset: rename + DCE")
+    preset.add_argument("--O2", action="store_true", help="Preset: rename + DCE + loop unrolling + scheduling")
+
+    # individual passes (combinable with presets)
+    ap.add_argument("--rename",   action="store_true", help="Static renaming (WAR/WAW)")
+    ap.add_argument("--dce",      action="store_true", help="Dead code elimination")
+    ap.add_argument("--loopu",    nargs="?", const=0, default=None, type=int, metavar="FACTOR",
+                    help="Loop unrolling; FACTOR=0 or omitted = heuristic")
+    ap.add_argument("--schedule", action="store_true", help="Instruction scheduling")
+
     ap.add_argument("--compare", action="store_true",
-                    help="Generate O0 vs O2 comparison (or O1 with --O1) as side-by-side HTML")
-    ap.add_argument("--fmt",     default="svg", choices=["svg", "png", "pdf"],
-                    help="Formato de imagen (default: svg)")
-    ap.add_argument("--out",     default=None,
-                    help="Directorio de salida (default: build/cfg/)")
-    ap.add_argument("--view",    action="store_true",
+                    help="Generate O0 vs <passes> side-by-side HTML")
+    ap.add_argument("--fmt",  default="svg", choices=["svg", "png", "pdf"],
+                    help="Image format (default: svg)")
+    ap.add_argument("--out",  default=None,
+                    help="Output directory (default: build/cfg/)")
+    ap.add_argument("--view", action="store_true",
                     help="Open images when done")
     args = ap.parse_args()
 
@@ -318,6 +379,7 @@ def main():
         sys.exit(1)
 
     out_dir = Path(args.out) if args.out else ROOT / "build" / "cfg"
+    passes  = _resolve_passes(args)
 
     print(f"\n=== CFG Visualizer ===")
     print(f"  Source : {source_file}")
@@ -325,22 +387,15 @@ def main():
     print(f"  Output : {out_dir}/")
 
     if args.compare:
-        cw = "O1" if args.O1 else "O2"
-        print(f"  Mode   : comparison O0 vs {cw}\n")
-        render_compare(source_file, out_dir, args.fmt, compare_with=cw)
+        cmp_passes = passes if passes.label != "O0" else _O2
+        print(f"  Mode   : comparison O0 vs {cmp_passes.label}\n")
+        render_compare(source_file, out_dir, args.fmt, cmp_passes)
         return
 
-    if args.O2:
-        opt_level, opt_label = OptimizationLevel.O2, "_O2"
-    elif args.O1:
-        opt_level, opt_label = OptimizationLevel.O1, "_O1"
-    else:
-        opt_level, opt_label = OptimizationLevel.O0, "_O0"
+    print(f"  Passes : {passes.label}\n")
 
-    print(f"  Level  : {opt_level.name}\n")
-
-    ir_program = compile_to_ir(source_file, opt_level)
-    rendered   = render_cfg(ir_program, out_dir, args.fmt, args.view, opt_label)
+    ir_program = compile_to_ir(source_file, passes)
+    rendered   = render_cfg(ir_program, out_dir, args.fmt, args.view, f"_{passes.label}")
     print(f"\n{len(rendered)} image(s) generated in:  {out_dir}/")
 
 
