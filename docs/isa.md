@@ -797,3 +797,7 @@ Esto sigue el principio RISC de utilizar instrucciones simples que se combinan p
 - El ensamblador expande `li` en dos instrucciones U-type.
 - El soporte TEA actual se implementa como una primitiva de hardware más ciclos en software, no como una instrucción completa de cifrado por bloque.
 - Las instrucciones de seguridad requieren autenticación antes de modificar o utilizar datos protegidos de la bóveda.
+
+
+---
+
