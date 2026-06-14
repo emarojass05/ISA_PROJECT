@@ -7,6 +7,7 @@ module tb_cpu_program;
     parameter int IMEM_DEPTH   = 65536;
     parameter int DMEM_DEPTH   = 65536;
     parameter int CACHE_ENABLE = 0;
+    parameter int MEM_CLK_DIV  = 4;
 
     parameter [1023:0] PROGRAM_FILE = "programs/hex/program.hex";
     parameter [1023:0] INITIAL_MEM  = "";
@@ -34,6 +35,7 @@ module tb_cpu_program;
         .IMEM_DEPTH  (IMEM_DEPTH),
         .DMEM_DEPTH  (DMEM_DEPTH),
         .CACHE_ENABLE(CACHE_ENABLE),
+        .MEM_CLK_DIV (MEM_CLK_DIV),
         .PROGRAM_FILE(PROGRAM_FILE),
         .INITIAL_MEM (INITIAL_MEM)
     ) dut (
@@ -215,6 +217,7 @@ module tb_cpu_program;
         $display("PROGRAM_FILE = %0s", PROGRAM_FILE);
         $display("INITIAL_MEM  = %0s", INITIAL_MEM);
         $display("CACHE_ENABLE = %0d", CACHE_ENABLE);
+        $display("MEM_CLK_DIV  = %0d", MEM_CLK_DIV);
         $display("MAX_CYCLES   = %0d", MAX_CYCLES);
         $display("DRAIN_CYCLES = %0d", DRAIN_CYCLES);
         $display("");

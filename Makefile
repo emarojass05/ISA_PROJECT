@@ -38,6 +38,7 @@ PROGRAM ?= $(HEX_DIR)/program.hex
 INITIAL_MEM ?=
 MAX_CYCLES ?= 2000
 CACHE_ENABLE ?= 0
+MEM_CLK_DIV ?= 4
 
 EXAMPLES_DIR = examples
 ADDRESS ?= 0x1000
@@ -74,12 +75,13 @@ sv-cbuild-%: $(CPU_SRC) $(TB_DIR)/tb_%.sv ## Build CPU module '%' with its tb_%.
 sv-run-%: sv-cbuild-%
 	$(VVP) $(SIM_BUILD)/$*.vvp
 
-sv-cpu-exec: $(CPU_SRC) $(TB_DIR)/tb_cpu_program.sv ## Build and run the CPU with PROGRAM=<hex>, optional INITIAL_MEM=<mem>, MAX_CYCLES=<cycles>, and CACHE_ENABLE=<0|1>; usage: make sv-cpu-exec PROGRAM=... CACHE_ENABLE=1.
+sv-cpu-exec: $(CPU_SRC) $(TB_DIR)/tb_cpu_program.sv ## Build and run the CPU with PROGRAM=<hex>, optional INITIAL_MEM=<mem>, MAX_CYCLES=<cycles>, CACHE_ENABLE=<0|1>, MEM_CLK_DIV=<n>; usage: make sv-cpu-exec PROGRAM=... CACHE_ENABLE=1 MEM_CLK_DIV=4.
 	@mkdir -p $(SIM_BUILD)
 	$(IVERILOG) $(FLAGS) \
 		-s tb_cpu_program \
 		-Ptb_cpu_program.MAX_CYCLES=$(MAX_CYCLES) \
 		-Ptb_cpu_program.CACHE_ENABLE=$(CACHE_ENABLE) \
+		-Ptb_cpu_program.MEM_CLK_DIV=$(MEM_CLK_DIV) \
 		-o $(SIM_BUILD)/cpu_program.vvp \
 		$^
 	$(VVP) $(SIM_BUILD)/cpu_program.vvp \
