@@ -23,6 +23,16 @@ module tb_cpu_program;
     // j offset=0, opcode=0x07
     localparam logic [31:0] HALT_INSTR = 32'h00000007;
 
+    // -- AMAT latency model ----
+    // Per-level access latencies (CPU cycles) for the analytical AMAT. They
+    // mirror the spec hit times and the main_mem_model LATENCY. The effective
+    // main-memory penalty is MM_LATENCY * MEM_CLK_DIV: the clock divider lowers
+    // the memory frequency relative to the CPU, so each transaction spans
+    // LATENCY ticks of MEM_CLK_DIV CPU cycles each (see main_mem_model.sv).
+    localparam int L1_HIT_TIME = 1;
+    localparam int L2_HIT_TIME = 8;
+    localparam int MM_LATENCY  = 25;
+
     logic clk;
     logic rst;
 
@@ -124,6 +134,11 @@ module tb_cpu_program;
         real l2_hit_rate;
         real mm_bytes;
         real bw_bytes_per_cycle;
+        real l1_miss_rate;
+        real l2_miss_rate;
+        real mm_penalty;
+        real amat_analytical;
+        real amat_measured;
         begin
             file = $fopen(METRICS_FILE, "w");
 
@@ -143,6 +158,29 @@ module tb_cpu_program;
                 // Each main-memory fetch transfers one 256-bit (32-byte) cache line.
                 mm_bytes           = $itor(dut.perf_mm_accesses) * 32.0;
                 bw_bytes_per_cycle = (cycles > 0) ? (mm_bytes / $itor(cycles)) : 0.0;
+
+                // Analytical AMAT (CPU cycles): hierarchical miss-penalty model
+                //   AMAT = HT_L1 + MR_L1 * (HT_L2 + MR_L2 * MM_penalty)
+                // MM penalty scales with MEM_CLK_DIV (slower memory clock).
+                l1_miss_rate = (dut.perf_l1_accesses > 0) ?
+                               ($itor(dut.perf_l1_misses) / $itor(dut.perf_l1_accesses)) : 0.0;
+
+                l2_miss_rate = ((dut.perf_l2_hits + dut.perf_l2_misses) > 0) ?
+                               ($itor(dut.perf_l2_misses) /
+                                $itor(dut.perf_l2_hits + dut.perf_l2_misses)) : 0.0;
+
+                mm_penalty = $itor(MM_LATENCY) * $itor(MEM_CLK_DIV);
+
+                amat_analytical = $itor(L1_HIT_TIME) +
+                                  l1_miss_rate * ($itor(L2_HIT_TIME) +
+                                                  l2_miss_rate * mm_penalty);
+
+                // Measured AMAT (CPU cycles): observed stalls amortized over all
+                // L1 accesses, plus the 1-cycle L1 hit time every access pays.
+                amat_measured = (dut.perf_l1_accesses > 0) ?
+                                ($itor(L1_HIT_TIME) +
+                                 $itor(dut.perf_cache_stall_cycles) /
+                                 $itor(dut.perf_l1_accesses)) : 0.0;
 
                 $fdisplay(file, "PERFORMANCE METRICS");
                 $fdisplay(file, "===================");
@@ -166,6 +204,11 @@ module tb_cpu_program;
                 $fdisplay(file, "Main memory fetches  : %0d", dut.perf_mm_accesses);
                 $fdisplay(file, "MM bytes transferred : %.0f B", mm_bytes);
                 $fdisplay(file, "BW utilization       : %.4f B/cycle", bw_bytes_per_cycle);
+                $fdisplay(file, "");
+                $fdisplay(file, "MM penalty (eff.)    : %.0f cycles (%0d x %0d)",
+                          mm_penalty, MM_LATENCY, MEM_CLK_DIV);
+                $fdisplay(file, "AMAT (analytical)    : %.4f cycles", amat_analytical);
+                $fdisplay(file, "AMAT (measured)      : %.4f cycles", amat_measured);
 
                 $fclose(file);
                 $display("[OK] Metrics written to %0s", METRICS_FILE);
@@ -185,6 +228,9 @@ module tb_cpu_program;
                 $display("  L2 hit rate          : %.2f%%", l2_hit_rate);
                 $display("  Main memory fetches  : %0d", dut.perf_mm_accesses);
                 $display("  BW utilization       : %.4f B/cycle", bw_bytes_per_cycle);
+                $display("---------------------------------------");
+                $display("  AMAT (analytical)    : %.4f cycles", amat_analytical);
+                $display("  AMAT (measured)      : %.4f cycles", amat_measured);
                 $display("=======================================");
             end
         end
