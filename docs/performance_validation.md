@@ -388,22 +388,14 @@ Indicadores esperados:
 
 ---
 
-## 18. Conclusiones esperadas del análisis
+## 18. Conclusiones
 
-El análisis debe permitir concluir:
+1. La jerarquía de caché L1-D/L2 permitió medir correctamente el impacto de memoria sobre el procesador. Los contadores registraron ciclos totales, instrucciones retiradas, IPC, stalls, accesos a L1, hits/misses y accesos a memoria principal, cumpliendo con las métricas necesarias para evaluar el rendimiento de SecuRISC-32.
 
-1. La jerarquía L1-D/L2 reduce el costo promedio de acceso a memoria cuando existe localidad.
-2. Los programas con acceso secuencial deben beneficiarse más de la línea de 32 bytes.
-3. Los misses de L2 son los más costosos porque activan la memoria principal de 25 ciclos.
-4. El write buffer reduce el bloqueo causado por evictions sucias de L2.
-5. Las optimizaciones del compilador pueden mejorar rendimiento al reducir instrucciones, mejorar localidad y disminuir stalls.
-6. La comparación con `CACHE_ENABLE=0` valida que la caché cambia el rendimiento, pero no la semántica del programa.
+2. Los resultados muestran que la caché beneficia principalmente a programas con localidad temporal o espacial. En benchmarks como `div_o0.hex`, `div_o1.hex`, `div_o2.hex`, `primo_o1.hex` y `primo_o2.hex`, la tasa de acierto de L1-D se mantuvo cercana o superior al 97%, lo que indica que la mayoría de accesos se resolvieron sin bajar hasta memoria principal.
 
+3. El benchmark `cache_stress.hex` evidencia el costo de los misses de caché. Con caché habilitada, los ciclos aumentaron de 1368 a 2744 debido a 1376 ciclos de stall. Este comportamiento es esperado, ya que el programa está diseñado para presionar la jerarquía de memoria y validar el manejo de misses y stalls.
+
+4. Las optimizaciones del compilador no siempre reducen ciclos en todos los casos. En varias familias, como división, factorial y primalidad, las versiones O1 y O2 produjeron métricas idénticas, lo que sugiere que para esos programas el código generado tuvo un comportamiento equivalente en el pipeline y en la jerarquía de memoria.
 ---
 
-## 19. Notas y trabajo pendiente
-
-* La tabla principal fue llenada con los valores reales generados por `build/sim/metrics.txt`.
-* Si se requiere cumplimiento estricto de desglose read/write, agregar contadores separados en `cache_ctrl.sv`.
-* Si se requiere modelado físico más realista, extender `main_mem_model.sv` con dominio de reloj separado.
-* Para la defensa, se recomienda mostrar al menos una ejecución con `CACHE_ENABLE=0`, una con `CACHE_ENABLE=1` y una comparación de benchmarks O0/O1/O2.
