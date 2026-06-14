@@ -14,6 +14,7 @@ module tb_cpu_program;
 
     parameter int MAX_CYCLES   = 200;
     parameter int DRAIN_CYCLES = 10;
+    parameter int LOG          = 0;
 
     parameter string REGISTER_DUMP_FILE = "build/sim/register_dump.txt";
     parameter string MEMORY_DUMP_FILE   = "build/sim/memory_dump.txt";
@@ -276,10 +277,10 @@ module tb_cpu_program;
         #1;
         rst = 1'b0;
 
-        $display("cycle        pc        instr        cache_stall");
+        if (LOG) $display("cycle        pc        instr        cache_stall");
 
         while (cycle_count < MAX_CYCLES) begin
-            $display(
+            if (LOG) $display(
                 "%5d  %08h  %08h  %b",
                 cycle_count,
                 dut.if_pc_cur,
@@ -289,7 +290,7 @@ module tb_cpu_program;
 
             // cycle_count > 10 avoids a false positive while the pipeline is filling
             if (dut.if_instr == HALT_INSTR && cycle_count > 10) begin
-                $display("[HALT] PROGRAM_END detected at cycle %0d (pc=%08h)",
+                if (LOG) $display("[HALT] PROGRAM_END detected at cycle %0d (pc=%08h)",
                          cycle_count,
                          dut.if_pc_cur);
 
