@@ -1,38 +1,40 @@
 // =============================================================================
 // main_mem_model.sv — Main Memory Model
 // =============================================================================
-// Capacity  : 64 KB (16 384 x 32-bit words)
-// Latency   : 25 clock cycles from request to data ready
-// Burst size: 256 bits (one full cache line = 8 x 32-bit words)
-// Init file : optional hex file loaded via $readmemh (INIT_FILE parameter)
+// Capacity   : 64 KB (16 384 x 32-bit words)
+// Latency    : LATENCY CPU clock cycles per transaction
+// Burst size : 256 bits (one full cache line = 8 x 32-bit words)
+// Init file  : optional hex file loaded via $readmemh (INIT_FILE parameter)
 //
-// This module simulates the latency of real DRAM. The cache controller sends
-// a single-cycle request pulse, then waits. Exactly 25 cycles later the module
-// asserts ready for one cycle and either returns a line (read) or confirms the
-// write (write-back).
+// MEM_CLK_DIV: clock-enable divisor that models a slower memory clock without
+// introducing a second physical clock domain. The latency FSM advances only
+// when an internal tick fires (every MEM_CLK_DIV CPU cycles). Effective
+// latency = LATENCY * MEM_CLK_DIV CPU cycles. With MEM_CLK_DIV=1 (default),
+// tick is always 1 and behavior is identical to the pre-divisor implementation.
 //
 // Protocol (used by cache_ctrl):
 //
 //   Read request:
 //     1. cache_ctrl asserts req=1, we=0, addr=line base address (one cycle)
-//     2. This module counts 25 cycles
-//     3. On cycle 25: ready=1 for exactly one cycle, rdata holds the 256-bit line
+//     2. This module counts LATENCY ticks
+//     3. On tick LATENCY: ready=1 for exactly one CPU cycle, rdata holds the line
 //
 //   Write request (write-back of a dirty cache line):
 //     1. cache_ctrl asserts req=1, we=1, addr=line base, wdata=256-bit line
-//     2. This module counts 25 cycles
-//     3. On cycle 25: ready=1 for exactly one cycle (write confirmation)
+//     2. This module counts LATENCY ticks
+//     3. On tick LATENCY: ready=1 for exactly one CPU cycle (write confirmation)
 //
 // Important: cache_ctrl must not issue a new request until ready arrives.
-//            ready is guaranteed to be high for exactly one cycle.
+//            ready is guaranteed to be high for exactly one CPU cycle.
 // =============================================================================
 
 module main_mem_model #(
-    parameter int    XLEN       = 32,
-    parameter int    DEPTH      = 16384,             // 64 KB / 4 bytes per word
-    parameter int    LINE_WORDS = 8,
-    parameter int    LINE_BITS  = LINE_WORDS * 32,   // 256 bits per cache line
-    parameter int    LATENCY    = 25,
+    parameter int    XLEN        = 32,
+    parameter int    DEPTH       = 16384,            // 64 KB / 4 bytes per word
+    parameter int    LINE_WORDS  = 8,
+    parameter int    LINE_BITS   = LINE_WORDS * 32,  // 256 bits per cache line
+    parameter int    LATENCY     = 25,
+    parameter int    MEM_CLK_DIV = 1,
     parameter [1023:0] INIT_FILE = ""
 )(
     input  logic                  clk,
@@ -63,12 +65,27 @@ module main_mem_model #(
         end
     end
 
+    // -- Clock-enable divisor ---------------------------------------------
+    // Width guard: $clog2(1)=0, which would create a zero-width signal.
+    // Use at least 1 bit so synthesis/simulation are always valid.
+    localparam int DIV_W = (MEM_CLK_DIV > 1) ? $clog2(MEM_CLK_DIV) : 1;
+    logic [DIV_W-1:0] div_cnt;
+    logic             tick;
+
+    generate
+        if (MEM_CLK_DIV <= 1) begin : gen_tick_always
+            assign tick = 1'b1;
+        end else begin : gen_tick_div
+            assign tick = (div_cnt == DIV_W'(MEM_CLK_DIV - 1));
+        end
+    endgenerate
+
     // -- Transaction state ------------------------------------------------
     logic                 active;       // a transaction is currently in progress
     logic                 active_we;    // type of the active transaction (0=read, 1=write)
     logic [XLEN-1:0]      active_addr;  // latched address for the active transaction
     logic [LINE_BITS-1:0] active_wdata; // latched write data
-    logic [$clog2(LATENCY+1)-1:0] count; // cycle counter (counts 1 to LATENCY-1)
+    logic [$clog2(LATENCY+1)-1:0] count; // tick counter (counts 1 to LATENCY-1)
 
     // Convert the byte address to a word index, aligned to the start of the
     // cache line. Bits [1:0] are the byte offset (always 0 for aligned access)
@@ -84,25 +101,45 @@ module main_mem_model #(
             active_addr  <= '0;
             active_wdata <= '0;
             count        <= '0;
+            div_cnt      <= '0;
             ready        <= 1'b0;
             rdata        <= '0;
         end else begin
             ready <= 1'b0;  // default: ready is low every cycle
 
+            // Skipped for MEM_CLK_DIV=1: tick is a constant 1, so div_cnt is unused.
+            if (MEM_CLK_DIV > 1) begin
+                if (div_cnt == DIV_W'(MEM_CLK_DIV - 1))
+                    div_cnt <= '0;
+                else
+                    div_cnt <= div_cnt + 1'b1;
+            end
+
             if (!active) begin
-                // Idle — waiting for cache_ctrl to issue a request.
+                // Idle — capture is not gated by tick so new requests register
+                // on the very next CPU cycle regardless of div_cnt phase.
                 if (req) begin
                     active       <= 1'b1;
                     active_we    <= we;
                     active_addr  <= addr;
                     active_wdata <= wdata;
-                    count        <= 1;
+
+                    if (MEM_CLK_DIV > 1) begin
+                        // Phase-align: set div_cnt to 1 so the first tick fires
+                        // exactly MEM_CLK_DIV-1 CPU cycles after this posedge.
+                        // count starts at 0; LATENCY ticks advance it to LATENCY-1,
+                        // yielding exactly LATENCY*MEM_CLK_DIV CPU cycles total.
+                        div_cnt <= DIV_W'(1);
+                        count   <= '0;
+                    end else begin
+                        // MEM_CLK_DIV=1: original behavior unchanged, count starts at 1.
+                        count <= 1;
+                    end
                 end
-            end else begin
-                // Counting down the latency. We fire on LATENCY-1 (not LATENCY)
-                // because the request is registered on the first active cycle,
-                // so the counter can only be checked starting from cycle 2.
-                // This gives us exactly LATENCY cycles from req to ready.
+            end else if (tick) begin
+                // Same threshold (LATENCY-1) works for both count-start values:
+                //   MEM_CLK_DIV=1  -> count: 1..LATENCY-1 -> exactly LATENCY CPU cycles.
+                //   MEM_CLK_DIV>1  -> count: 0..LATENCY-1 -> exactly LATENCY*MEM_CLK_DIV CPU cycles.
                 if (count == LATENCY - 1) begin
                     ready  <= 1'b1;
                     active <= 1'b0;
