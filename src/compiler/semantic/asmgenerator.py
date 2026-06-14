@@ -3,6 +3,7 @@ from src.compiler.generated.LanguageVisitor import LanguageVisitor
 
 class AsmGenerator(LanguageVisitor):
     WORD_SIZE = 4
+    IMMED12_MAX = 2047
 
     TEMP_REGISTERS = [
         "t0", "t1", "t2", "t3", "t4",
@@ -101,6 +102,47 @@ class AsmGenerator(LanguageVisitor):
         self.emit(f"luhw {register}, 0x{upper:04X}")
         self.emit(f"llhw {register}, 0x{lower:04X}")
 
+    def emit_sp_adjust(self, delta):
+        # Signed 12-bit immediate limit prevents direct addi for large frames.
+        # Use luhw/llhw + sub/add to handle arbitrary frame sizes.
+        if -2048 <= delta <= self.IMMED12_MAX:
+            self.emit(f"addi sp, sp, {delta}")
+        else:
+            tmp = self.allocate_register()
+            self.emit_load_immediate(tmp, abs(delta))
+            if delta < 0:
+                self.emit(f"sub sp, sp, {tmp}")
+            else:
+                self.emit(f"add sp, sp, {tmp}")
+            self.free_register(tmp)
+
+    def emit_sp_load(self, dest_reg, offset):
+        # Use dest_reg itself as scratch; lw overwrites it anyway.
+        if -2048 <= offset <= self.IMMED12_MAX:
+            self.emit(f"lw {dest_reg}, {offset}(sp)")
+        else:
+            self.emit_load_immediate(dest_reg, offset)
+            self.emit(f"add {dest_reg}, sp, {dest_reg}")
+            self.emit(f"lw {dest_reg}, 0({dest_reg})")
+
+    def emit_sp_store(self, src_reg, offset):
+        if -2048 <= offset <= self.IMMED12_MAX:
+            self.emit(f"sw {src_reg}, {offset}(sp)")
+        else:
+            tmp = self.allocate_register()
+            self.emit_load_immediate(tmp, offset)
+            self.emit(f"add {tmp}, sp, {tmp}")
+            self.emit(f"sw {src_reg}, 0({tmp})")
+            self.free_register(tmp)
+
+    def emit_sp_addr(self, dest_reg, offset):
+        # Use dest_reg itself as scratch for large offsets.
+        if -2048 <= offset <= self.IMMED12_MAX:
+            self.emit(f"addi {dest_reg}, sp, {offset}")
+        else:
+            self.emit_load_immediate(dest_reg, offset)
+            self.emit(f"add {dest_reg}, sp, {dest_reg}")
+
     def emit_move(self, destination, source):
         self.emit(f"addi {destination}, {source}, 0")
 
@@ -108,7 +150,7 @@ class AsmGenerator(LanguageVisitor):
         if symbol.get("is_local"):
             # Local variable: sp-relative frame access (no temp register needed)
             offset = symbol["address"] + self.sp_delta
-            self.emit(f"lw {destination}, {offset}(sp)")
+            self.emit_sp_load(destination, offset)
         else:
             # Global variable: load absolute address into temp register, then load
             address_register = self.allocate_register()
@@ -120,7 +162,7 @@ class AsmGenerator(LanguageVisitor):
         if symbol.get("is_local"):
             # Local variable: sp-relative frame store (no temp register needed)
             offset = symbol["address"] + self.sp_delta
-            self.emit(f"sw {source}, {offset}(sp)")
+            self.emit_sp_store(source, offset)
         else:
             # Global variable: load absolute address into temp register, then store
             address_register = self.allocate_register()
@@ -262,7 +304,7 @@ class AsmGenerator(LanguageVisitor):
 
         # --- Prologue ---
         # Allocate full frame and save return address at sp+0
-        self.emit(f"addi sp, sp, -{frame_size}")
+        self.emit_sp_adjust(-frame_size)
         self.emit(f"sw ra, 0(sp)")
 
         # Store incoming arguments into their frame slots.
@@ -281,7 +323,7 @@ class AsmGenerator(LanguageVisitor):
                 # sp + frame_size + (index - num_arg_regs) * WORD_SIZE
                 extra_offset = frame_size + (index - num_arg_regs) * self.WORD_SIZE
                 tmp_register = self.allocate_register()
-                self.emit(f"lw {tmp_register}, {extra_offset}(sp)")
+                self.emit_sp_load(tmp_register, extra_offset)
                 self.emit_store_symbol(tmp_register, parameter_symbol)
                 self.free_register(tmp_register)
 
@@ -290,7 +332,7 @@ class AsmGenerator(LanguageVisitor):
         # --- Epilogue ---
         self.emit_label(return_label)
         self.emit(f"lw ra, 0(sp)")
-        self.emit(f"addi sp, sp, {frame_size}")
+        self.emit_sp_adjust(frame_size)
         self.emit("jr ra")
 
         self.symbol_table.exit_scope()
@@ -333,7 +375,7 @@ class AsmGenerator(LanguageVisitor):
                 if symbol.get("is_local"):
                     # Local array: store directly via sp-relative offset
                     element_offset = symbol["address"] + index * self.WORD_SIZE
-                    self.emit(f"sw {value_register}, {element_offset}(sp)")
+                    self.emit_sp_store(value_register, element_offset)
                 else:
                     # Global array: compute absolute address then store
                     address_register = self.allocate_register()
@@ -679,7 +721,7 @@ class AsmGenerator(LanguageVisitor):
             if symbol["kind"] == "array":
                 if symbol.get("is_local"):
                     # Local array: base address = sp + frame_offset
-                    self.emit(f"addi {register}, sp, {symbol['address'] + self.sp_delta}")
+                    self.emit_sp_addr(register, symbol['address'] + self.sp_delta)
                 else:
                     # Global array: load absolute address
                     self.emit_load_immediate(register, symbol["address"])
@@ -778,7 +820,7 @@ class AsmGenerator(LanguageVisitor):
         if symbol["kind"] == "array":
             if symbol.get("is_local"):
                 # Local array: base = sp + frame_offset
-                self.emit(f"addi {address_register}, sp, {symbol['address'] + self.sp_delta}")
+                self.emit_sp_addr(address_register, symbol['address'] + self.sp_delta)
             else:
                 # Global array: absolute address
                 self.emit_load_immediate(address_register, symbol["address"])
