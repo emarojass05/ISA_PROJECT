@@ -828,13 +828,36 @@ class AsmGenerator(LanguageVisitor):
             # Pointer variable: load its value (the address it points to)
             self.emit_load_symbol(address_register, symbol)
 
-        for expr_ctx in ctx.expr():
-            index_register = self.visit(expr_ctx)
+        exprs = list(ctx.expr())
+        dims  = symbol.get("dims", [])
 
-            self.emit(f"slli {index_register}, {index_register}, 2")
-            self.emit(f"add {address_register}, {address_register}, {index_register}")
+        if len(dims) > 1 and len(exprs) != len(dims):
+            raise Exception(
+                f"Error line {ctx.ID().getSymbol().line}: '{name}' has "
+                f"{len(dims)} dimension(s) but {len(exprs)} index/indices given"
+            )
 
-            self.free_register(index_register)
+        if len(dims) > 1:
+            # Row-major offset: ((i0*d1 + i1)*d2 + ...) * WORD_SIZE
+            acc = self.visit(exprs[0])
+            for k in range(1, len(exprs)):
+                stride_reg = self.allocate_register()
+                self.emit_load_immediate(stride_reg, dims[k])
+                self.emit(f"mul {acc}, {acc}, {stride_reg}")
+                self.free_register(stride_reg)
+                idx_k = self.visit(exprs[k])
+                self.emit(f"add {acc}, {acc}, {idx_k}")
+                self.free_register(idx_k)
+            self.emit(f"slli {acc}, {acc}, 2")
+            self.emit(f"add {address_register}, {address_register}, {acc}")
+            self.free_register(acc)
+        else:
+            # 1D array or pointer: simple linear indexing
+            for expr_ctx in exprs:
+                index_register = self.visit(expr_ctx)
+                self.emit(f"slli {index_register}, {index_register}, 2")
+                self.emit(f"add {address_register}, {address_register}, {index_register}")
+                self.free_register(index_register)
 
         return address_register
 

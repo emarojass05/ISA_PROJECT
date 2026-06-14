@@ -149,26 +149,38 @@ class SemanticTableBuilder(LanguageVisitor):
         name = ctx.ID().getText()
         type_name = self.clean_type(ctx.typeSpec()) + "[]"
         line = ctx.ID().getSymbol().line
-        size = self.get_array_size(ctx)
+        size, dims = self._get_array_size_and_dims(ctx)
         symbol = self.symbol_table.declare_variable(
             name=name, type_name=type_name, line=line, size=size
         )
         symbol["kind"] = "array"
-        if ctx.expr():
-            self.visit(ctx.expr())
+        symbol["dims"] = dims
         if ctx.arrayLiteral():
             self.visit(ctx.arrayLiteral())
         return None
 
-    def get_array_size(self, ctx):
+    def _get_array_size_and_dims(self, ctx):
+        """Return (total_size, dims_list) for an array declaration.
+
+        For literal init: dims=[total] (flat 1D).
+        For sized decl:   dims=[d0, d1, ...] from comma-separated exprs.
+        """
         if ctx.arrayLiteral():
-            return len(ctx.arrayLiteral().expr())
-        if ctx.expr():
+            n = len(ctx.arrayLiteral().expr())
+            return n, [n]
+        exprs = ctx.expr()
+        if not exprs:
+            return 1, [1]
+        dims = []
+        for e in exprs:
             try:
-                return self.eval_const_expr(ctx.expr())
+                dims.append(self.eval_const_expr(e))
             except (ValueError, Exception):
-                return 1
-        return 1
+                dims.append(1)
+        total = 1
+        for d in dims:
+            total *= d
+        return total, dims
 
     def eval_const_expr(self, ctx):
         """Evaluate a compile-time constant expression. Raises ValueError if not reducible."""

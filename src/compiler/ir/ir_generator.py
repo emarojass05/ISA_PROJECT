@@ -516,13 +516,38 @@ class IRGenerator(LanguageVisitor):
             # Pointer: load its value (which is the address)
             self._emit_load(addr, symbol)
 
-        # Add each index dimension
-        for expr_ctx in ctx.expr():
-            idx    = self.visit(expr_ctx)
-            scaled = self._new_temp()
-            self._emit(IRBinOp(scaled, idx, BinOp.MUL, str(WORD_SIZE)))
+        exprs = list(ctx.expr())
+        dims  = symbol.get("dims", [])
+
+        if len(dims) > 1 and len(exprs) != len(dims):
+            raise Exception(
+                f"Error line {ctx.ID().getSymbol().line}: '{name}' has "
+                f"{len(dims)} dimension(s) but {len(exprs)} index/indices given"
+            )
+
+        if len(dims) > 1:
+            # Row-major offset: ((i0*d1 + i1)*d2 + ...) * WORD_SIZE
+            acc = self.visit(exprs[0])
+            for k in range(1, len(exprs)):
+                t_scaled = self._new_temp()
+                self._emit(IRBinOp(t_scaled, acc, BinOp.MUL, str(dims[k])))
+                t_sum = self._new_temp()
+                idx_k = self.visit(exprs[k])
+                self._emit(IRBinOp(t_sum, t_scaled, BinOp.ADD, idx_k))
+                acc = t_sum
+            scaled   = self._new_temp()
+            self._emit(IRBinOp(scaled, acc, BinOp.MUL, str(WORD_SIZE)))
             new_addr = self._new_temp()
             self._emit(IRBinOp(new_addr, addr, BinOp.ADD, scaled))
             addr = new_addr
+        else:
+            # 1D array or pointer: simple linear indexing
+            for expr_ctx in exprs:
+                idx      = self.visit(expr_ctx)
+                scaled   = self._new_temp()
+                self._emit(IRBinOp(scaled, idx, BinOp.MUL, str(WORD_SIZE)))
+                new_addr = self._new_temp()
+                self._emit(IRBinOp(new_addr, addr, BinOp.ADD, scaled))
+                addr = new_addr
 
         return addr

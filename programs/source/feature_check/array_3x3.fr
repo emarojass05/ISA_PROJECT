@@ -1,0 +1,15 @@
+$ Feature: 3x3 multidimensional array with row-major stride
+$ Expected return (x3): 9
+$ Fill mat with 1..9 in row order, ret mat@(2)@(2) = 9
+
+fonc [int] main() {
+    [int] *mat(3, 3);
+    [int] k = 0;
+    pour ([int] i = 0; i < 3; i++) {
+        pour ([int] j = 0; j < 3; j++) {
+            k = k + 1;
+            mat@(i)@(j) = k;
+        }
+    }
+    ret mat@(2)@(2);
+}
