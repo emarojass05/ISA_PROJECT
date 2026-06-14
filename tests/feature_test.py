@@ -67,24 +67,26 @@ COMPILE_ERROR = "compile_error"
 EXPECTED = {
     "annotations": 7,
     "arithmetic_ops": 42,
+    "array_3x3": 9,           # P3: 3x3 matrix, ret mat@(2)@(2) = 9
     "array_indexed_rw": 15,
-    "array_large": 42,        # P1: currently fails to compile (frame > 12-bit imm)
+    "array_large": 42,        # P1: large frame (> 12-bit sp adjust)
     "array_literal": 30,
-    "array_multidim": 4,      # P3: currently 3 (no row stride)
+    "array_multidim": 4,      # P3: row-major stride
     "array_sized": 99,
     "bitwise_ops": 42,
     "continue_stmt": 6,
     "for_loop": 14,
-    "globals": 45,            # P5: currently 0 (premature HALT in testbench)
+    "globals": 45,            # P5: premature HALT fix
     "hex_literals": 255,
     "if_else": 6,
     "imports": 60,
-    "logical_ops": 3,         # P4: currently 10 (&&/|| as bitwise, ! as xori)
+    "logical_ops": 3,         # P4: &&/|| normalized to 0/1
     "many_params": 36,
     "pointer_params": 40,
     "recursion": 120,
     "relational_eq": 6,
-    "string_literal": 1,      # P6: currently fails to compile (assumes string support)
+    "string_literal": 104,    # P6: 'h' = 104
+    "symbol_table_address_test": 42,  # P2: stack layout display
     "types_bool": 1,
     "types_char": 65,
     "unary_ops": 5,
