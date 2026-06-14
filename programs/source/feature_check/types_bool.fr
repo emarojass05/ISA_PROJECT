@@ -1,0 +1,13 @@
+$ Feature: boolean type vrai/faux literals and bool variables
+$ Expected return (x3): 1
+$ t = vrai (1), f = faux (0), return t && !f = 1
+
+fonc [int] main() {
+    [bool] t = vrai;
+    [bool] f = faux;
+    [bool] result = t && !f;
+    si (result) {
+        ret 1;
+    }
+    ret 0;
+}

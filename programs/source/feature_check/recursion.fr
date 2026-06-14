@@ -1,0 +1,14 @@
+$ Feature: recursive function (factorial)
+$ Expected return (x3): 120
+$ factorial(5) = 120
+
+fonc [int] factorial([int] n) {
+    si (n <= 1) {
+        ret 1;
+    }
+    ret n * factorial(n - 1);
+}
+
+fonc [int] main() {
+    ret factorial(5);
+}

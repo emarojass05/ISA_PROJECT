@@ -1,0 +1,15 @@
+$ Feature: array indexed read/write in loop, sum all elements
+$ Expected return (x3): 15
+$ Fill arr[0..4] = {1,2,3,4,5}, sum = 15
+
+fonc [int] main() {
+    [int] *arr(5);
+    pour ([int] i = 0; i < 5; i++) {
+        arr@(i) = i + 1;
+    }
+    [int] sum = 0;
+    pour ([int] j = 0; j < 5; j++) {
+        sum = sum + arr@(j);
+    }
+    ret sum;
+}

@@ -1,0 +1,9 @@
+$ Feature: invoquer import statement
+$ Expected return (x3): 60
+$ Imports fc_utils.fr and calls add_three(10, 20, 30) = 60
+
+invoquer "fc_utils.fr";
+
+fonc [int] main() {
+    ret add_three(10, 20, 30);
+}

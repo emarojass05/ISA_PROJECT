@@ -1,0 +1,12 @@
+$ Feature: arithmetic operators + - * / % and parenthesized precedence
+$ Expected return (x3): 42
+$ Computation: (3 + 4) * 5 - 100 / 10 + 7 % 3 = 35 - 10 + 1 = 26... let's use simpler: 2+3*5 = 17, then 100/4=25, 25-17=8, 8%5=3, 3+39=42
+
+fonc [int] main() {
+    [int] a = 2 + 3 * 5;
+    [int] b = 100 / 4;
+    [int] c = b - a;
+    [int] d = c % 5;
+    [int] result = d + 39;
+    ret result;
+}

@@ -1,0 +1,11 @@
+$ Feature: multidimensional array access m@(i)@(j) (2x2 matrix stored flat)
+$ Expected return (x3): 4
+$ mat is 2x2: {{1,2},{3,4}}, return mat@(1)@(1) = 4 (if stride correct)
+$ If stride is broken, mat@(1)@(1) might = 2 or garbage
+
+fonc [int] main() {
+    [int] *mat = {1, 2, 3, 4};
+    [int] row = 1;
+    [int] col = 1;
+    ret mat@(row)@(col);
+}

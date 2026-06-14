@@ -1,0 +1,9 @@
+$ Feature: char type
+$ Expected return (x3): 65
+$ 'A' has ASCII value 65; store in char var, cast/return as int
+
+fonc [int] main() {
+    [char] c = 65;
+    [int] x = c;
+    ret x;
+}

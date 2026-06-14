@@ -1,0 +1,9 @@
+$ Feature: hexadecimal integer literals 0x...
+$ Expected return (x3): 255
+$ 0xFF = 255
+
+fonc [int] main() {
+    [int] a = 0xFF;
+    [int] b = 0x0F;
+    ret a - b + 0x0F;
+}

@@ -1,0 +1,8 @@
+$ Feature: annotations ? identifier
+$ Expected return (x3): 7
+? vaulted
+
+fonc [int] main() {
+    [int] x = 7;
+    ret x;
+}

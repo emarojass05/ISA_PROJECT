@@ -1,0 +1,10 @@
+$ Feature: unary operators - (negation) and ! (logical not)
+$ Expected return (x3): 5
+$ -(-10) = 10, !0 = 1, -(10 - 16) = 6, total check: use 10 + 1 - 6 = 5
+
+fonc [int] main() {
+    [int] a = -(-10);
+    [int] b = !0;
+    [int] c = -(10 - 16);
+    ret a + b - c;
+}

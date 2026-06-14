@@ -1,0 +1,12 @@
+$ Feature: sized array declaration *arr(N), write and read elements
+$ Expected return (x3): 99
+
+fonc [int] main() {
+    [int] *arr(5);
+    arr@(0) = 10;
+    arr@(1) = 20;
+    arr@(2) = 30;
+    arr@(3) = 40;
+    arr@(4) = 99;
+    ret arr@(4);
+}

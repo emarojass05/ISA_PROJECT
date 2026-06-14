@@ -1,0 +1,25 @@
+$ Feature: global variables and arrays modified from functions
+$ Expected return (x3): 45
+
+[int] g_counter = 0;
+[int] *g_arr(3);
+
+fonc [void] increment([int] amount) {
+    g_counter = g_counter + amount;
+    ret;
+}
+
+fonc [void] fill_globals() {
+    g_arr@(0) = 10;
+    g_arr@(1) = 20;
+    g_arr@(2) = 30;
+    ret;
+}
+
+fonc [int] main() {
+    increment(5);
+    increment(10);
+    fill_globals();
+    [int] sum = g_counter + g_arr@(2);
+    ret sum;
+}

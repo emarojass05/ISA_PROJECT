@@ -1,0 +1,8 @@
+$ Feature: string literal "..." used as expression value
+$ Expected return (x3): COMPILE_ERROR (string literals not supported in IR)
+$ This test intentionally probes the limitation
+
+fonc [int] main() {
+    [char] *s = "hello";
+    ret 1;
+}
