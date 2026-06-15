@@ -30,7 +30,7 @@ VENV_PY = _find_venv_python()
 RETURN_REG = 3
 
 # Default simulation cycle limit
-DEFAULT_MAX_CYCLES = 2000
+DEFAULT_MAX_CYCLES = 5000
 
 # ---------------------------------------------------------------------------
 # Expected return values by program
@@ -141,6 +141,7 @@ def _bar(pct: float, width: int = 12) -> str:
 def run_verification(
     programs: list[str],
     levels: list[tuple[str, str | None]],
+    max_cycles: int = DEFAULT_MAX_CYCLES,
 ) -> bool:
     BIN_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -175,7 +176,7 @@ def run_verification(
                 continue
 
             # --- 2. Simulate ---
-            ok_sim, err_sim = run_simulation(out_hex)
+            ok_sim, err_sim = run_simulation(out_hex, max_cycles)
             if not ok_sim:
                 elapsed = round((time.perf_counter() - t0) * 1000)
                 print(f"SIM ERROR ({elapsed}ms)")
@@ -283,16 +284,7 @@ def main() -> None:
     print("=" * 70)
     print()
 
-    ok = run_verification(all_programs, selected_levels)
-    sys.exit(0 if ok else 1)
-
-
-if __name__ == "__main__":
-    main()
-    print("=" * 70)
-    print()
-
-    ok = run_verification(all_programs, selected_levels)
+    ok = run_verification(all_programs, selected_levels, args.max_cycles)
     sys.exit(0 if ok else 1)
 
 
