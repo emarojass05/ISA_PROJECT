@@ -884,8 +884,12 @@ class AsmGenerator(LanguageVisitor):
             # Row-major offset: ((i0*d1 + i1)*d2 + ...) * WORD_SIZE
             acc = self.visit(exprs[0])
             for k in range(1, len(exprs)):
+                stride = dims[k]
                 stride_reg = self.allocate_register()
-                self.emit_load_immediate(stride_reg, dims[k])
+                if isinstance(stride, int):
+                    self.emit_load_immediate(stride_reg, stride)
+                else:
+                    self.emit_load_symbol(stride_reg, self.get_symbol(stride[1]))
                 self.emit(f"mul {acc}, {acc}, {stride_reg}")
                 self.free_register(stride_reg)
                 idx_k = self.visit(exprs[k])

@@ -39,7 +39,7 @@ params
     ;
 
 param
-    : typeSpec pointer? ID
+    : typeSpec pointer? ID (LPAREN expr (COMMA expr)* RPAREN)?
     ;
 
 typeSpec

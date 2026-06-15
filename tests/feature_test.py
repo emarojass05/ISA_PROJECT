@@ -72,6 +72,7 @@ EXPECTED = {
     "array_large": 42,        # P1: large frame (> 12-bit sp adjust)
     "array_literal": 30,
     "array_multidim": 4,      # P3: row-major stride
+    "array_param_2d": 50,     # N-D stride on dimensioned pointer parameters
     "array_sized": 99,
     "bitwise_ops": 42,
     "continue_stmt": 6,

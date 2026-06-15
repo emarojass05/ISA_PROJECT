@@ -565,8 +565,17 @@ class IRGenerator(LanguageVisitor):
             # Row-major offset: ((i0*d1 + i1)*d2 + ...) * WORD_SIZE
             acc = self.visit(exprs[0])
             for k in range(1, len(exprs)):
+                stride = dims[k]
+                if isinstance(stride, int):
+                    stride_operand = str(stride)
+                else:
+                    stride_operand = self._new_temp()
+                    self._emit_load(
+                        stride_operand,
+                        self._get_symbol(stride[1], ctx.ID().getSymbol().line)
+                    )
                 t_scaled = self._new_temp()
-                self._emit(IRBinOp(t_scaled, acc, BinOp.MUL, str(dims[k])))
+                self._emit(IRBinOp(t_scaled, acc, BinOp.MUL, stride_operand))
                 t_sum = self._new_temp()
                 idx_k = self.visit(exprs[k])
                 self._emit(IRBinOp(t_sum, t_scaled, BinOp.ADD, idx_k))

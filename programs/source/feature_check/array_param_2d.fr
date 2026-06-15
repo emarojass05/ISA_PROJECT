@@ -1,0 +1,27 @@
+$ N-D stride on dimensioned pointer parameters: 2x2 matrix multiply.
+$ A = [[1,2],[3,4]], B = [[5,6],[7,8]] -> C = [[19,22],[43,50]].
+$ Parameters carry runtime dimensions, so A@(i)@(k) uses a true row stride.
+$ main reads the flat backing buffer: C[1][1] is row-major index 3 = 50.
+
+fonc [void] matmul([int] *A(filas, comun), [int] *B(comun, columnas),
+                   [int] *C(filas, columnas),
+                   [int] filas, [int] comun, [int] columnas) {
+    pour ([int] i = 0; i < filas; i = i + 1) {
+        pour ([int] j = 0; j < columnas; j = j + 1) {
+            [int] suma = 0;
+            pour ([int] k = 0; k < comun; k = k + 1) {
+                suma = suma + A@(i)@(k) * B@(k)@(j);
+            }
+            C@(i)@(j) = suma;
+        }
+    }
+    ret;
+}
+
+fonc [int] main() {
+    [int] *A = {1, 2, 3, 4};
+    [int] *B = {5, 6, 7, 8};
+    [int] *C(4);
+    matmul(A, B, C, 2, 2, 2);
+    ret C@(3);
+}

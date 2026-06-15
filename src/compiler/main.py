@@ -113,7 +113,11 @@ class SemanticTableBuilder(LanguageVisitor):
                 if param_ctx.pointer():
                     param_type += "*"
                 param_name = param_ctx.ID().getText()
-                parameters.append({"name": param_name, "type": param_type})
+                parameters.append({
+                    "name": param_name,
+                    "type": param_type,
+                    "dims": self._build_param_dims(param_ctx),
+                })
         self.symbol_table.declare_function(
             name=name, return_type=return_type, parameters=parameters, line=line
         )
@@ -121,16 +125,21 @@ class SemanticTableBuilder(LanguageVisitor):
     def visitFunctionDecl(self, ctx):
         function_name = ctx.ID().getText()
         self.symbol_table.enter_scope(function_name, reset_local=True)
-        if ctx.params():
-            for param_ctx in ctx.params().param():
-                param_type = self.clean_type(param_ctx.typeSpec())
-                if param_ctx.pointer():
-                    param_type += "*"
-                param_name = param_ctx.ID().getText()
-                line = param_ctx.ID().getSymbol().line
-                self.symbol_table.declare_parameter(
-                    name=param_name, type_name=param_type, line=line
-                )
+        param_ctxs = list(ctx.params().param()) if ctx.params() else []
+        for param_ctx in param_ctxs:
+            param_type = self.clean_type(param_ctx.typeSpec())
+            if param_ctx.pointer():
+                param_type += "*"
+            param_name = param_ctx.ID().getText()
+            line = param_ctx.ID().getSymbol().line
+            self.symbol_table.declare_parameter(
+                name=param_name, type_name=param_type, line=line,
+                dims=self._build_param_dims(param_ctx)
+            )
+        # Validate after all parameters are declared so dimensions may reference
+        # parameters that appear later in the signature.
+        for param_ctx in param_ctxs:
+            self._validate_param_dims(param_ctx)
         self.visit(ctx.block())
         frame_size = self.symbol_table.next_frame_offset
         self.symbol_table.exit_scope()
@@ -206,6 +215,48 @@ class SemanticTableBuilder(LanguageVisitor):
         for d in dims:
             total *= d
         return total, dims
+
+    def _build_param_dims(self, param_ctx):
+        """Return the dimension list for a parameter declaration.
+
+        Each entry is an int (constant dimension) or a ("ref", name) tuple
+        referencing a scalar int parameter resolved at runtime.
+        """
+        dims = []
+        for e in param_ctx.expr():
+            try:
+                dims.append(self.eval_const_expr(e))
+            except (ValueError, Exception):
+                text = e.getText()
+                if not text.isidentifier():
+                    raise Exception(
+                        f"Error line {param_ctx.ID().getSymbol().line}: "
+                        f"parameter dimension must be an integer constant or a "
+                        f"scalar int parameter name, got '{text}'"
+                    )
+                dims.append(("ref", text))
+        return dims
+
+    def _validate_param_dims(self, param_ctx):
+        if not param_ctx.expr():
+            return
+        line = param_ctx.ID().getSymbol().line
+        if not param_ctx.pointer():
+            raise Exception(
+                f"Error line {line}: array dimensions are only allowed on "
+                f"pointer parameters"
+            )
+        _, symbol = self.symbol_table.lookup(param_ctx.ID().getText())
+        for dim in symbol["dims"]:
+            if not isinstance(dim, tuple):
+                continue
+            ref_name = dim[1]
+            _, ref = self.symbol_table.lookup(ref_name)
+            if ref is None or ref.get("kind") != "parameter" or ref.get("type") != "int":
+                raise Exception(
+                    f"Error line {line}: dimension '{ref_name}' must be a "
+                    f"scalar int parameter"
+                )
 
     def eval_const_expr(self, ctx):
         """Evaluate a compile-time constant expression. Raises ValueError if not reducible."""
