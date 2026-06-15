@@ -23,6 +23,7 @@ module cache_hierarchy #(
     parameter int    L2_SETS       = 128,                  // L2 sets (2^7)
     parameter int    MEM_DEPTH     = 16384,                // main_mem words (64 KB)
     parameter int    MEM_LATENCY   = 25,                   // DRAM lat. cycles
+    parameter int    MEM_CLK_DIV   = 1,                    // memory clock-enable divisor
     parameter [1023:0] MEM_INIT_FILE = ""                  // optional init file
 )(
     input  logic             clk,
@@ -318,12 +319,13 @@ module cache_hierarchy #(
 
     // Instance: main_mem_model
     main_mem_model #(
-        .XLEN      (XLEN),
-        .DEPTH     (MEM_DEPTH),
-        .LINE_WORDS(LINE_WORDS),
-        .LINE_BITS (LINE_BITS),
-        .LATENCY   (MEM_LATENCY),
-        .INIT_FILE (MEM_INIT_FILE)
+        .XLEN       (XLEN),
+        .DEPTH      (MEM_DEPTH),
+        .LINE_WORDS (LINE_WORDS),
+        .LINE_BITS  (LINE_BITS),
+        .LATENCY    (MEM_LATENCY),
+        .MEM_CLK_DIV(MEM_CLK_DIV),
+        .INIT_FILE  (MEM_INIT_FILE)
     ) u_main_mem (
         .clk  (clk),
         .rst  (rst),
