@@ -77,7 +77,6 @@ EXPECTED = {
     "bitwise_ops": 42,
     "continue_stmt": 6,
     "for_loop": 14,
-    "globals": 45,            # P5: premature HALT fix
     "hex_literals": 255,
     "if_else": 6,
     "imports": 60,

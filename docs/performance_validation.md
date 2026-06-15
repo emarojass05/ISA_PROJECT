@@ -103,6 +103,8 @@ L2_miss_rate = perf_l2_misses / (perf_l2_hits + perf_l2_misses)
 
 ## 6. Métricas de memoria principal
 
+La memoria principal modela una capacidad de 64 KB (`DEPTH=16384` palabras de 32 bits) con latencia base de 25 ticks de memoria. La FSM de latencia avanza un tick cada `MEM_CLK_DIV` ciclos de CPU, por lo que la latencia efectiva es `LATENCY * MEM_CLK_DIV` ciclos de CPU (default de sistema `MEM_CLK_DIV=4` -> 100 ciclos, ~25 MHz si el CPU corre a 100 MHz). El divisor puede sobreescribirse en tiempo de compilación con `make sv-cpu-exec MEM_CLK_DIV=<n>`.
+
 Cada acceso a memoria principal transfiere una línea completa de caché:
 
 ```text
@@ -135,13 +137,22 @@ AMAT = L1_hit_time
 
 Para el modelo usado:
 
-| Parámetro        | Valor de referencia                          |
-| ---------------- | -------------------------------------------- |
-| `L1_hit_time`    | 1 ciclo                                      |
-| `L2_hit_time`    | Aproximadamente 8 ciclos modelados por FSM   |
-| `memory_penalty` | 25 ciclos base + ciclos de llenado/writeback |
+| Parámetro        | Valor de referencia                                             |
+| ---------------- | --------------------------------------------------------------- |
+| `L1_hit_time`    | 1 ciclo                                                         |
+| `L2_hit_time`    | Aproximadamente 8 ciclos modelados por FSM                      |
+| `memory_penalty` | `MM_LATENCY * MEM_CLK_DIV` ciclos de CPU (default 25 x 4 = 100) |
 
-El AMAT debe interpretarse como una aproximación útil para comparar configuraciones o programas. El costo real observado se refleja directamente en `perf_cache_stall_cycles` y en los ciclos totales.
+El factor `MEM_CLK_DIV` es esencial: la FSM de `main_mem_model` avanza un tick cada `MEM_CLK_DIV` ciclos de CPU, así que la penalización real de un miss de L2 hacia memoria principal es `LATENCY * MEM_CLK_DIV` ciclos de CPU (100 con el default de sistema), no `LATENCY` ciclos. Usar solo `LATENCY` reportaría un AMAT optimista que no corresponde a la latencia que de hecho experimenta el pipeline.
+
+El AMAT debe interpretarse como una aproximación útil para comparar configuraciones o programas. El costo real observado se refleja directamente en `perf_cache_stall_cycles` y en los ciclos totales. `tb_cpu_program.sv` reporta dos formas complementarias en `metrics.txt`:
+
+```text
+AMAT_analitico = HT_L1 + MR_L1 * (HT_L2 + MR_L2 * MM_penalty)
+AMAT_medido    = HT_L1 + perf_cache_stall_cycles / perf_l1_accesses
+```
+
+Una diferencia grande entre ambos indica overhead de FSM no contemplado por el modelo analítico o un working set atípico.
 
 ---
 
