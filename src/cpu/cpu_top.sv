@@ -5,6 +5,7 @@ module cpu_top #(
     parameter int IMEM_DEPTH  = 65536,
     parameter int DMEM_DEPTH  = 65536,
     parameter int CACHE_ENABLE = 1,
+    parameter int MEM_CLK_DIV  = 4,
     parameter [1023:0] PROGRAM_FILE = "programs/hex/program.hex",
     parameter [1023:0] INITIAL_MEM  = ""
 )(
@@ -474,6 +475,7 @@ module cpu_top #(
     cache_hierarchy #(
         .XLEN           (XLEN),
         .MEM_DEPTH      (DMEM_DEPTH),
+        .MEM_CLK_DIV    (MEM_CLK_DIV),
         .MEM_INIT_FILE  (INITIAL_MEM)
     ) u_cache (
         .clk(clk),

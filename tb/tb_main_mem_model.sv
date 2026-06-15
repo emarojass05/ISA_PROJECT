@@ -9,6 +9,7 @@
 //   TC4 — Write + re-read: write a line, then read it back
 //   TC5 — Two consecutive transactions: second starts right after ready
 //   TC6 — No overlap: req ignored while active=1
+//   TC7 — Clock-enable divisor: MEM_CLK_DIV=4 -> effective latency = LATENCY*4
 // =============================================================================
 
 module tb_main_mem_model;
@@ -19,7 +20,7 @@ module tb_main_mem_model;
     localparam int LATENCY    = 25;
     localparam int DEPTH      = 16384;
 
-    // ── DUT ──────────────────────────────────────────────────────────────────
+    // -- TC1-TC6: default DUT (MEM_CLK_DIV=1) --------------------------------
     logic                 clk, rst;
     logic                 req;
     logic                 we;
@@ -42,6 +43,36 @@ module tb_main_mem_model;
         .wdata(wdata),
         .ready(ready),
         .rdata(rdata)
+    );
+
+    // -- TC7: divisor DUT (MEM_CLK_DIV=4, LATENCY=5) -------------------------
+    // Effective latency = 5 * 4 = 20 CPU cycles.
+    localparam int TC7_DIV     = 4;
+    localparam int TC7_LATENCY = 5;
+
+    logic                 d2_rst;
+    logic                 d2_req;
+    logic                 d2_we;
+    logic [XLEN-1:0]      d2_addr;
+    logic [LINE_BITS-1:0] d2_wdata;
+    logic                 d2_ready;
+    logic [LINE_BITS-1:0] d2_rdata;
+
+    main_mem_model #(
+        .XLEN       (XLEN),
+        .DEPTH      (DEPTH),
+        .LINE_WORDS (LINE_WORDS),
+        .LATENCY    (TC7_LATENCY),
+        .MEM_CLK_DIV(TC7_DIV)
+    ) dut2 (
+        .clk  (clk),
+        .rst  (d2_rst),
+        .req  (d2_req),
+        .we   (d2_we),
+        .addr (d2_addr),
+        .wdata(d2_wdata),
+        .ready(d2_ready),
+        .rdata(d2_rdata)
     );
 
     // ── Clock ─────────────────────────────────────────────────────────────────
@@ -115,13 +146,21 @@ module tb_main_mem_model;
         addr  = '0;
         wdata = '0;
 
+        d2_rst   = 1'b1;
+        d2_req   = 1'b0;
+        d2_we    = 1'b0;
+        d2_addr  = '0;
+        d2_wdata = '0;
+
         // ─────────────────────────────────────────────────────────────────────
         $display("\n=== TC1: Reset ===");
         rst = 1'b1;
         repeat(3) @(posedge clk); #1;
         check("ready=0 after reset", ready, 1'b0);
         check32("rdata[31:0]=0 after reset", rdata[31:0], 32'h0);
-        @(negedge clk); rst = 1'b0;
+        @(negedge clk);
+        rst    = 1'b0;
+        d2_rst = 1'b0;
 
         // ─────────────────────────────────────────────────────────────────────
         $display("\n=== TC2: Read — exact 25-cycle latency ===");
@@ -205,6 +244,38 @@ module tb_main_mem_model;
             check("tx_b: latency = 25", (cycles_b == LATENCY), 1'b1);
             check32("tx_b word0", rdata[0*32 +: 32], 32'hBBBB_0000);
             check32("tx_b word7", rdata[7*32 +: 32], 32'hBBBB_0007);
+        end
+
+        // ─────────────────────────────────────────────────────────────────────
+        $display("\n=== TC7: Clock-enable divisor (MEM_CLK_DIV=4, LATENCY=5) ===");
+        begin
+            int cycles;
+            int exp_cycles;
+
+            // Expected effective latency = TC7_LATENCY * TC7_DIV CPU cycles.
+            exp_cycles = TC7_LATENCY * TC7_DIV;
+
+            dut2.memory[0] = 32'hF00D_0000;
+            dut2.memory[1] = 32'hF00D_0001;
+
+            @(negedge clk);
+            d2_req  = 1'b1;
+            d2_we   = 1'b0;
+            d2_addr = '0;
+            @(posedge clk); #1;
+            d2_req = 1'b0;
+
+            cycles = 1;
+            while (!d2_ready) begin
+                @(posedge clk); #1;
+                cycles++;
+            end
+
+            $display("  [INFO] cycles until ready = %0d (expected %0d)", cycles, exp_cycles);
+            check("divisor: effective latency = LATENCY*MEM_CLK_DIV", (cycles == exp_cycles), 1'b1);
+            check("divisor: ready=1", d2_ready, 1'b1);
+            check32("divisor: rdata[word0]", d2_rdata[0*32 +: 32], 32'hF00D_0000);
+            check32("divisor: rdata[word1]", d2_rdata[1*32 +: 32], 32'hF00D_0001);
         end
 
         // ─────────────────────────────────────────────────────────────────────
