@@ -1,0 +1,6 @@
+$ Utility file imported by imports.fr
+$ Provides add_three function
+
+fonc [int] add_three([int] a, [int] b, [int] c) {
+    ret a + b + c;
+}

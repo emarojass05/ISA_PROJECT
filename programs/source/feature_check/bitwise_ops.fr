@@ -1,0 +1,10 @@
+$ Feature: bitwise operators | ^ << >>
+$ Expected return (x3): 42
+$ Computation: 1 << 5 = 32, 32 | 8 = 40, 40 ^ 2 = 42, verify: 42 >> 1 = 21 (store separately, return 42)
+
+fonc [int] main() {
+    [int] a = 1 << 5;
+    [int] b = a | 8;
+    [int] c = b ^ 2;
+    ret c;
+}

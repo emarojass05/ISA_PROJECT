@@ -22,6 +22,26 @@ from src.compiler.ir.optimizer import optimize_program, OptimizationLevel
 from src.compiler.ir.ir_codegen import IRCodeGenerator
 
 
+def _parse_string_literal(raw: str) -> list:
+    """Decode a STRING_LITERAL token (with surrounding quotes) into a list of int char values.
+
+    Supported escape sequences: \\n \\t \\r \\\\ \\" \\0
+    No null terminator is appended; callers decide on termination convention.
+    """
+    s = raw[1:-1]
+    _ESC = {'n': 10, 't': 9, 'r': 13, '\\': 92, '"': 34, '0': 0}
+    chars = []
+    i = 0
+    while i < len(s):
+        if s[i] == '\\' and i + 1 < len(s):
+            chars.append(_ESC.get(s[i + 1], ord(s[i + 1])))
+            i += 2
+        else:
+            chars.append(ord(s[i]))
+            i += 1
+    return chars
+
+
 class CompilerErrorListener(ErrorListener):
     def __init__(self):
         super().__init__()
@@ -93,7 +113,11 @@ class SemanticTableBuilder(LanguageVisitor):
                 if param_ctx.pointer():
                     param_type += "*"
                 param_name = param_ctx.ID().getText()
-                parameters.append({"name": param_name, "type": param_type})
+                parameters.append({
+                    "name": param_name,
+                    "type": param_type,
+                    "dims": self._build_param_dims(param_ctx),
+                })
         self.symbol_table.declare_function(
             name=name, return_type=return_type, parameters=parameters, line=line
         )
@@ -101,16 +125,21 @@ class SemanticTableBuilder(LanguageVisitor):
     def visitFunctionDecl(self, ctx):
         function_name = ctx.ID().getText()
         self.symbol_table.enter_scope(function_name, reset_local=True)
-        if ctx.params():
-            for param_ctx in ctx.params().param():
-                param_type = self.clean_type(param_ctx.typeSpec())
-                if param_ctx.pointer():
-                    param_type += "*"
-                param_name = param_ctx.ID().getText()
-                line = param_ctx.ID().getSymbol().line
-                self.symbol_table.declare_parameter(
-                    name=param_name, type_name=param_type, line=line
-                )
+        param_ctxs = list(ctx.params().param()) if ctx.params() else []
+        for param_ctx in param_ctxs:
+            param_type = self.clean_type(param_ctx.typeSpec())
+            if param_ctx.pointer():
+                param_type += "*"
+            param_name = param_ctx.ID().getText()
+            line = param_ctx.ID().getSymbol().line
+            self.symbol_table.declare_parameter(
+                name=param_name, type_name=param_type, line=line,
+                dims=self._build_param_dims(param_ctx)
+            )
+        # Validate after all parameters are declared so dimensions may reference
+        # parameters that appear later in the signature.
+        for param_ctx in param_ctxs:
+            self._validate_param_dims(param_ctx)
         self.visit(ctx.block())
         frame_size = self.symbol_table.next_frame_offset
         self.symbol_table.exit_scope()
@@ -149,26 +178,85 @@ class SemanticTableBuilder(LanguageVisitor):
         name = ctx.ID().getText()
         type_name = self.clean_type(ctx.typeSpec()) + "[]"
         line = ctx.ID().getSymbol().line
-        size = self.get_array_size(ctx)
+        size, dims = self._get_array_size_and_dims(ctx)
         symbol = self.symbol_table.declare_variable(
             name=name, type_name=type_name, line=line, size=size
         )
         symbol["kind"] = "array"
-        if ctx.expr():
-            self.visit(ctx.expr())
+        symbol["dims"] = dims
         if ctx.arrayLiteral():
             self.visit(ctx.arrayLiteral())
         return None
 
-    def get_array_size(self, ctx):
+    def _get_array_size_and_dims(self, ctx):
+        """Return (total_size, dims_list) for an array declaration.
+
+        For string literal:  dims=[n] where n = number of chars.
+        For array literal:   dims=[n] (flat 1D).
+        For sized decl:      dims=[d0, d1, ...] from comma-separated exprs.
+        """
+        if ctx.STRING_LITERAL():
+            chars = _parse_string_literal(ctx.STRING_LITERAL().getText())
+            n = len(chars)
+            return n, [n]
         if ctx.arrayLiteral():
-            return len(ctx.arrayLiteral().expr())
-        if ctx.expr():
+            n = len(ctx.arrayLiteral().expr())
+            return n, [n]
+        exprs = ctx.expr()
+        if not exprs:
+            return 1, [1]
+        dims = []
+        for e in exprs:
             try:
-                return self.eval_const_expr(ctx.expr())
+                dims.append(self.eval_const_expr(e))
             except (ValueError, Exception):
-                return 1
-        return 1
+                dims.append(1)
+        total = 1
+        for d in dims:
+            total *= d
+        return total, dims
+
+    def _build_param_dims(self, param_ctx):
+        """Return the dimension list for a parameter declaration.
+
+        Each entry is an int (constant dimension) or a ("ref", name) tuple
+        referencing a scalar int parameter resolved at runtime.
+        """
+        dims = []
+        for e in param_ctx.expr():
+            try:
+                dims.append(self.eval_const_expr(e))
+            except (ValueError, Exception):
+                text = e.getText()
+                if not text.isidentifier():
+                    raise Exception(
+                        f"Error line {param_ctx.ID().getSymbol().line}: "
+                        f"parameter dimension must be an integer constant or a "
+                        f"scalar int parameter name, got '{text}'"
+                    )
+                dims.append(("ref", text))
+        return dims
+
+    def _validate_param_dims(self, param_ctx):
+        if not param_ctx.expr():
+            return
+        line = param_ctx.ID().getSymbol().line
+        if not param_ctx.pointer():
+            raise Exception(
+                f"Error line {line}: array dimensions are only allowed on "
+                f"pointer parameters"
+            )
+        _, symbol = self.symbol_table.lookup(param_ctx.ID().getText())
+        for dim in symbol["dims"]:
+            if not isinstance(dim, tuple):
+                continue
+            ref_name = dim[1]
+            _, ref = self.symbol_table.lookup(ref_name)
+            if ref is None or ref.get("kind") != "parameter" or ref.get("type") != "int":
+                raise Exception(
+                    f"Error line {line}: dimension '{ref_name}' must be a "
+                    f"scalar int parameter"
+                )
 
     def eval_const_expr(self, ctx):
         """Evaluate a compile-time constant expression. Raises ValueError if not reducible."""
@@ -388,6 +476,10 @@ def print_ir_with_blocks(ir_program):
         print()
 
 
+# Initial stack pointer set in ENTRY prologue (top of 65536-word data memory).
+_SP_INIT = 0x3FFFC
+
+
 def format_address(address):
     if address is None:
         return "-"
@@ -402,22 +494,76 @@ def print_symbol_table(symbol_table):
     if not symbols:
         print("[empty]")
         return
+
+    # Build per-function frame_size map so local word indices can be derived.
+    # frame_size is stored on the function symbol after the semantic pass.
+    func_frame = {
+        name: sym["frame_size"]
+        for (scope, name), sym in symbols.items()
+        if sym.get("kind") == "function" and "frame_size" in sym
+    }
+
+    # Column layout:
+    #   Offset/Addr  - for locals:  sp+0xNNNN (frame offset from sp)
+    #                  for globals: 0xNNNN    (absolute byte address)
+    #   Word         - word index in memory_dump.txt (byte_addr / 4)
+    #                  for locals:  derived from SP_INIT and frame_size (see footnote)
     print(
-        f"{'Scope':<15} {'Name':<15} {'Kind':<12} "
-        f"{'Type':<10} {'Address':<10} {'Size':<6} {'Line':<6}"
+        f"{'Scope':<15} {'Name':<15} {'Kind':<12} {'Type':<10} "
+        f"{'Offset/Addr':<14} {'Word in dump':<16} {'Size':<6} {'Line':<6}"
     )
+
+    has_local = False
+
     for (_, _), symbol in symbols.items():
-        scope = symbol.get("scope", "-")
-        name = symbol.get("name", "-")
-        kind = symbol.get("kind", "-")
+        scope     = symbol.get("scope", "-")
+        name      = symbol.get("name", "-")
+        kind      = symbol.get("kind", "-")
         type_name = symbol.get("type", "-")
-        address = format_address(symbol.get("address"))
-        size = symbol.get("size", "-")
-        line = symbol.get("line", "-")
+        address   = symbol.get("address")
+        size      = symbol.get("size", 1) or 1
+        line      = symbol.get("line", "-")
+        is_local  = symbol.get("is_local", False)
+
+        # Offset/Addr column
+        if address is None:
+            addr_str = "-"
+        elif is_local:
+            addr_str = f"sp+0x{address:04X}"
+        else:
+            addr_str = f"0x{address:04X}"
+
+        # Word column
+        if kind == "function" or address is None:
+            word_str = "-"
+        elif is_local:
+            frame_size = func_frame.get(scope)
+            if frame_size is not None:
+                start_word = (_SP_INIT - frame_size + address) // 4
+                if size > 1:
+                    word_str = f"{start_word}..{start_word + size - 1} (*)"
+                else:
+                    word_str = f"{start_word} (*)"
+                has_local = True
+            else:
+                word_str = "?"
+        else:
+            start_word = address // 4
+            if size > 1:
+                word_str = f"{start_word}..{start_word + size - 1}"
+            else:
+                word_str = str(start_word)
+
         print(
-            f"{scope:<15} {name:<15} {kind:<12} "
-            f"{type_name:<10} {address:<10} {size:<6} {line:<6}"
+            f"{scope:<15} {name:<15} {kind:<12} {type_name:<10} "
+            f"{addr_str:<14} {word_str:<16} {size:<6} {line:<6}"
         )
+
+    if has_local:
+        print()
+        print("  (*) Local word index assumes the function is called first from ENTRY")
+        print(f"      (sp = 0x{_SP_INIT:04X}). Formula: word = (0x{_SP_INIT:04X} - frame_size + offset) / 4.")
+        print("      For nested calls add the caller's frame_size / 4 to each local word index.")
 
 
 def print_reference_table(symbol_table):

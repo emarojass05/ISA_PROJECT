@@ -13,13 +13,13 @@ fonc [void] auxiliar([int] *A, [int] *B, [int] *R,
     }
 
     si (k == col_A) {
-        R@(i)@(j) = acc;
+        R@(i * col_B + j) = acc;
         [int] y = auxiliar(A, B, R, filas_A, col_A, filas_B, col_B, i, j + 1, 0, 0);
         ret;
     }
 
     [int] m = auxiliar(A, B, R, filas_A, col_A, filas_B, col_B,
-                       i, j, k + 1, acc + A@(i)@(k) * B@(k)@(j));
+                       i, j, k + 1, acc + A@(i * col_A + k) * B@(k * col_B + j));
     ret;
 }
 

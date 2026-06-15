@@ -1,0 +1,31 @@
+$ Instruction reordering test: independent computations around a conditional.
+$ log is independent of the lectura->promedio->ajuste->resultado chain,
+$ exposing reordering opportunities for the scheduler.
+
+fonc [int] analizar_sensor_reordenado([int] *datos, [int] tam) {
+    [int] i = 0;
+    [int] total = 0;
+
+    alors (i < tam) {
+        [int] lectura = datos@(i);
+
+        [int] log = i * 100;
+
+        [int] promedio = lectura * 2;
+        [int] ajuste = promedio + 10;
+        [int] resultado = ajuste * 3;
+
+        si (lectura > 50) {
+            total = total + resultado;
+        }
+
+        i = i + 1;
+    }
+
+    ret total;
+}
+
+fonc [int] main() {
+    [int] *datos = {10, 60, 30, 80, 55, 20};
+    ret analizar_sensor_reordenado(datos, 6);
+}

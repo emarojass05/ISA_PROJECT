@@ -1,0 +1,51 @@
+$ Dead code elimination test: matrix multiply with intentionally dead variables.
+$ temporal_externo, basura1, basura2, basura3, desperdicio are never used
+$ in any live computation, so DCE should eliminate them entirely.
+$ Matrices use native N-D indexing: pointer parameters carry their dimensions
+$ (e.g. [int] *A(filas, comun)), so A@(i)@(k) lowers to a true row-major
+$ offset (i * comun + k) * WORD with a real row stride.
+
+fonc [int] multiplicacion_matrices([int] *A(filas, comun), [int] *B(comun, columnas),
+                                   [int] *C(filas, columnas),
+                                   [int] filas, [int] comun, [int] columnas) {
+    [int] total_operaciones = 0;
+
+    pour ([int] i = 0; i < filas; i = i + 1) {
+        [int] temporal_externo = i * 100;
+
+        pour ([int] j = 0; j < columnas; j = j + 1) {
+            [int] basura1 = i + j;
+
+            [int] suma = 0;
+
+            pour ([int] k = 0; k < comun; k = k + 1) {
+                [int] basura2 = k * 50;
+
+                suma = suma + A@(i)@(k) * B@(k)@(j);
+
+                total_operaciones = total_operaciones + 1;
+            }
+
+            C@(i)@(j) = suma;
+
+            [int] basura3 = suma * 999;
+        }
+    }
+
+    [int] estadistica = total_operaciones;
+    [int] desperdicio = estadistica * 2;
+
+    ret total_operaciones;
+}
+
+fonc [int] main() {
+    $ 2x2 matrices: A = [[1,2],[3,4]], B = [[5,6],[7,8]]
+    $ C = [[1*5+2*7, 1*6+2*8],[3*5+4*7, 3*6+4*8]] = [[19,22],[43,50]]
+    [int] *A = {1, 2,
+                3, 4};
+    [int] *B = {5, 6,
+                7, 8};
+    [int] *C(4);
+    [int] ops = multiplicacion_matrices(A, B, C, 2, 2, 2);
+    ret ops;
+}

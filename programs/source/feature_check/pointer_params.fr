@@ -1,0 +1,15 @@
+$ Feature: passing array to function via pointer param *param and mutating it
+$ Expected return (x3): 100
+
+fonc [void] double_all([int] n, [int] *arr) {
+    pour ([int] i = 0; i < n; i++) {
+        arr@(i) = arr@(i) * 2;
+    }
+    ret;
+}
+
+fonc [int] main() {
+    [int] *data = {5, 10, 15, 20};
+    double_all(4, data);
+    ret data@(3);
+}

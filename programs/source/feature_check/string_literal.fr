@@ -1,0 +1,9 @@
+$ string_literal.fr
+$ Acceptance test for P6: [char] array initialized from a string literal.
+$ Expected return (x3): 104  ('h' = 0x68)
+
+fonc [int] main()
+{
+    [char] *greeting = "hello";
+    ret greeting@(0);
+}

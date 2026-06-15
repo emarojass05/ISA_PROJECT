@@ -1,0 +1,15 @@
+$ Feature: multidimensional array access m@(i)@(j) with declared dims [int] *mat(2,2)
+$ Expected return (x3): 4
+$ mat is 2x2 row-major: mat@(0)@(0)=1, mat@(0)@(1)=2, mat@(1)@(0)=3, mat@(1)@(1)=4
+$ mat@(1)@(1) = base + (1*2+1)*4 = base+12 = element 3 (0-indexed) = 4
+
+fonc [int] main() {
+    [int] *mat(2, 2);
+    mat@(0)@(0) = 1;
+    mat@(0)@(1) = 2;
+    mat@(1)@(0) = 3;
+    mat@(1)@(1) = 4;
+    [int] row = 1;
+    [int] col = 1;
+    ret mat@(row)@(col);
+}

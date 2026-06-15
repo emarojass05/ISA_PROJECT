@@ -30,7 +30,7 @@ VENV_PY = _find_venv_python()
 RETURN_REG = 3
 
 # Default simulation cycle limit
-DEFAULT_MAX_CYCLES = 2000
+DEFAULT_MAX_CYCLES = 5000
 
 # ---------------------------------------------------------------------------
 # Expected return values by program
@@ -40,24 +40,24 @@ DEFAULT_MAX_CYCLES = 2000
 
 EXPECTED: dict[str, int] = {
     # Loop unrolling
-    "opt01_unroll_sum":     100,  # 1^3+2^3+3^3+4^3 = 1+8+27+64 = 100
-    "opt02_unroll_product": 5,    # fibonacci 4 iters: a=0,b=1 -> b=5
-    "opt03_unroll_nested":  32,   # inner fila=8, outer n=4: 4*8=32
+    "opt01_unroll_sum":     3937, # poly_fib(2): coefs Fibonacci, x=2 -> 3937
+    "opt02_unroll_product": 120,  # quad_sum(5,3): sum(i*(i+1)*3) i=0..4 = 120
+    "opt03_unroll_nested":  245,  # mat_sum(6): nested loop, total=245
 
     # WAW/WAR renaming
-    "opt04_waw_simple":     17,   # x=2->x=6->y=x+1=7->x=x+4=10; x+y=10+7=17
-    "opt05_war_simple":     48,   # c=24,d=10,a=14,b=34; a+b=48
-    "opt06_waw_war_mixed":  34,   # p=3,q=5,r=15,p=17,q=2,r=34
+    "opt04_waw_simple":     410,  # waw_parallel(4,7): x=121, y=289 -> 410
+    "opt05_war_simple":     106,  # war_sequence(6,4): a=34, b=72 -> 106
+    "opt06_waw_war_mixed":  122,  # mixed_deps(5,3): m=72, n=35, prod=15 -> 122
 
     # Dead Code Elimination
-    "opt07_dce_unused_var": 7,    # live=base+step=4+3=7; dead1/2/3 eliminados
-    "opt08_dce_chain":      10,   # result=m+n=4+6=10; waste1..4 eliminados
-    "opt09_dce_with_call":  4,    # vivo=4; call helper se mantiene, muerto1/2/3 eliminados
+    "opt07_dce_unused_var": 7,    # solo_rango(): vmax-vmin = 9-2 = 7
+    "opt08_dce_chain":      13,   # only_sum(8,5): result = 8+5 = 13
+    "opt09_dce_with_call":  32,   # compute(5,3,7): live = 5*7-3 = 32
 
     # Scheduling (conditionals / function chains)
-    "opt10_cond_simple":    7,    # suma=8,prod=15; suma>prod? No -> prod-suma=7
-    "opt11_cond_nested":    24,   # a=3,b=4,c=5; s=12,p=12; s>10 y p>10 -> s+p=24
-    "opt12_func_chain":     32,   # cuadrado(3)=9,cuadrado(4)=16; sc=25; 25+3+4=32
+    "opt10_cond_simple":    1080, # sched_cond(6,4,3,7): sum1<sum2 -> x3*x4=1080
+    "opt11_cond_nested":    45,   # sched_nested(8,5,12,3): c*d+pre2=36+9=45
+    "opt12_func_chain":     1143, # nivel3(nivel2(nivel1(5))): 1143
 }
 
 LEVELS = [
@@ -141,6 +141,7 @@ def _bar(pct: float, width: int = 12) -> str:
 def run_verification(
     programs: list[str],
     levels: list[tuple[str, str | None]],
+    max_cycles: int = DEFAULT_MAX_CYCLES,
 ) -> bool:
     BIN_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -175,7 +176,7 @@ def run_verification(
                 continue
 
             # --- 2. Simulate ---
-            ok_sim, err_sim = run_simulation(out_hex)
+            ok_sim, err_sim = run_simulation(out_hex, max_cycles)
             if not ok_sim:
                 elapsed = round((time.perf_counter() - t0) * 1000)
                 print(f"SIM ERROR ({elapsed}ms)")
@@ -283,16 +284,7 @@ def main() -> None:
     print("=" * 70)
     print()
 
-    ok = run_verification(all_programs, selected_levels)
-    sys.exit(0 if ok else 1)
-
-
-if __name__ == "__main__":
-    main()
-    print("=" * 70)
-    print()
-
-    ok = run_verification(all_programs, selected_levels)
+    ok = run_verification(all_programs, selected_levels, args.max_cycles)
     sys.exit(0 if ok else 1)
 
 

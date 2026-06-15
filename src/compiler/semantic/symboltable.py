@@ -74,7 +74,7 @@ class SymbolTable:
 
         return self.symbols[key]
 
-    def declare_parameter(self, name, type_name, line):
+    def declare_parameter(self, name, type_name, line, dims=None):
         key = (self.current_scope, name)
 
         if key in self.symbols:
@@ -93,6 +93,7 @@ class SymbolTable:
             "address": address,
             "is_local": is_local,
             "size": 1,
+            "dims": dims or [],
             "line": line
         }
 

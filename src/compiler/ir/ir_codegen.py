@@ -15,7 +15,8 @@ from .liveness import analyze_liveness, instr_liveness
 
 # ---------------------------------------------------------------------------
 
-WORD = 4  # bytes per word
+WORD = 4          # bytes per word
+IMMED12_MAX = 2047  # max signed 12-bit immediate
 
 # Scratch registers for computation
 _T0, _T1, _T2 = "t0", "t1", "t2"
@@ -168,7 +169,7 @@ class IRCodeGenerator:
             self._emit_label(f"FUNC_{ir_func.name}")
 
         # Prologue
-        self._emit(f"addi sp, sp, -{self._frame_size}")
+        self._emit_sp_adjust(-self._frame_size)
         self._emit(f"sw ra, 0(sp)")
 
         # Save incoming arguments to their frame slots
@@ -178,7 +179,7 @@ class IRCodeGenerator:
                 break
             _, psym = self.symbol_table.lookup(param["name"])
             if psym and psym.get("is_local"):
-                self._emit(f"sw {_ARG_REGS[idx]}, {psym['address']}(sp)")
+                self._emit_sp_store(_ARG_REGS[idx], psym['address'])
 
         # Body - emit block-boundary comments whenever a new block starts
         _SEP = "=" * 44
@@ -193,7 +194,7 @@ class IRCodeGenerator:
         # Epilogue
         self._emit_label(self._return_label)
         self._emit(f"lw ra, 0(sp)")
-        self._emit(f"addi sp, sp, {self._frame_size}")
+        self._emit_sp_adjust(self._frame_size)
         self._emit("jr ra")
 
         self.symbol_table.exit_scope()
@@ -481,9 +482,9 @@ class IRCodeGenerator:
             if sym.get("is_local"):
                 if sym.get("kind") == "array":
                     # Local array: yield the frame address, not the value stored there
-                    self._emit(f"addi {reg}, sp, {sym['address']}")
+                    self._emit_sp_addr(reg, sym['address'])
                 else:
-                    self._emit(f"lw {reg}, {sym['address']}(sp)")
+                    self._emit_sp_load(reg, sym['address'])
             else:
                 # Global scalar: load absolute address into t3, then dereference
                 self._emit(f"li {_T3}, {sym['address']}")
@@ -497,7 +498,7 @@ class IRCodeGenerator:
             return
 
         if var in self._temp_slots:
-            self._emit(f"lw {reg}, {self._temp_slots[var]}(sp)")
+            self._emit_sp_load(reg, self._temp_slots[var])
             return
 
         raise RuntimeError(
@@ -509,7 +510,7 @@ class IRCodeGenerator:
         _, sym = self.symbol_table.lookup(var)
         if sym is not None:
             if sym.get("is_local"):
-                self._emit(f"sw {reg}, {sym['address']}(sp)")
+                self._emit_sp_store(reg, sym['address'])
             else:
                 self._emit(f"li {_T3}, {sym['address']}")
                 self._emit(f"sw {reg}, 0({_T3})")
@@ -522,7 +523,7 @@ class IRCodeGenerator:
             return
 
         if var in self._temp_slots:
-            self._emit(f"sw {reg}, {self._temp_slots[var]}(sp)")
+            self._emit_sp_store(reg, self._temp_slots[var])
             return
 
         raise RuntimeError(
@@ -564,3 +565,43 @@ class IRCodeGenerator:
         name = f"_{prefix}_{self._label_counter}"
         self._label_counter += 1
         return name
+
+    # -- SP helpers ---------------------------------------------------------
+
+    def _emit_sp_adjust(self, delta: int) -> None:
+        # Signed 12-bit immediate limit prevents direct addi for large frames.
+        # Use li (luhw/llhw) + sub/add to handle arbitrary frame sizes.
+        if -2048 <= delta <= IMMED12_MAX:
+            self._emit(f"addi sp, sp, {delta}")
+        else:
+            self._emit(f"li {_T0}, {abs(delta)}")
+            if delta < 0:
+                self._emit(f"sub sp, sp, {_T0}")
+            else:
+                self._emit(f"add sp, sp, {_T0}")
+
+    def _emit_sp_load(self, reg: str, offset: int) -> None:
+        # Use reg itself as scratch; lw overwrites it anyway.
+        if -2048 <= offset <= IMMED12_MAX:
+            self._emit(f"lw {reg}, {offset}(sp)")
+        else:
+            self._emit(f"li {reg}, {offset}")
+            self._emit(f"add {reg}, sp, {reg}")
+            self._emit(f"lw {reg}, 0({reg})")
+
+    def _emit_sp_store(self, reg: str, offset: int) -> None:
+        # Use _T3 as scratch (reserved for address loads, not live across statements).
+        if -2048 <= offset <= IMMED12_MAX:
+            self._emit(f"sw {reg}, {offset}(sp)")
+        else:
+            self._emit(f"li {_T3}, {offset}")
+            self._emit(f"add {_T3}, sp, {_T3}")
+            self._emit(f"sw {reg}, 0({_T3})")
+
+    def _emit_sp_addr(self, reg: str, offset: int) -> None:
+        # Use reg itself as scratch for large offsets.
+        if -2048 <= offset <= IMMED12_MAX:
+            self._emit(f"addi {reg}, sp, {offset}")
+        else:
+            self._emit(f"li {reg}, {offset}")
+            self._emit(f"add {reg}, sp, {reg}")

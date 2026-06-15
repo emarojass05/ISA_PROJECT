@@ -1,18 +1,22 @@
 $ opt06_waw_war_mixed.fr
-$ Mezcla WAW+WAR: p y q se leen para r, luego p y q se reescriben (WAR),
-$ luego r se reescribe usando los nuevos valores (WAW en r).
-$ p=3, q=5, r=p*q=15, p=r+2=17, q=p-r=2, r=p*q=34
-$ Resultado esperado: 34
-fonc [int] mixed_demo() {
-    [int] p = 3;
-    [int] q = 5;
-    [int] r = p * q;
-    p = r + 2;
-    q = p - r;
-    r = p * q;
-    ret r;
+$ Renaming -- mezcla WAW y WAR en m y n.
+$ m=5, n=3: prod=15, diff=2, sumsq=34 -> m=17, n=19 -> t=36 -> m=72, n=35
+$ Resultado esperado: 122 (72 + 35 + 15)
+
+fonc [int] mixed_deps([int] mi, [int] ni) {
+    [int] m    = mi;
+    [int] n    = ni;
+    [int] prod  = m * n;
+    [int] diff  = m - n;
+    [int] sumsq = m * m + n * n;
+    m = prod + diff;
+    n = sumsq - prod;
+    [int] t = m + n;
+    m = t * 2;
+    n = t - 1;
+    ret m + n + prod;
 }
 
 fonc [int] main() {
-    ret mixed_demo();
+    ret mixed_deps(5, 3);
 }

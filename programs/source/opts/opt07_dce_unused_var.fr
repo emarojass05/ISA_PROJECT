@@ -1,18 +1,25 @@
 $ opt07_dce_unused_var.fr
-$ DCE: cadena de 3 variables muertas que dependen entre si.
-$ base y step son vivos (usados en live). dead1/dead2/dead3 son muertos.
-$ live = base + step = 4 + 3 = 7
+$ DCE -- solo la cadena vmin/vmax sobrevive; suma, promedio, ajuste y factor
+$ son todos muertos. DCE debe eliminar ~7 instrucciones.
+$ v1=3,v2=7,v3=2,v4=9,v5=5: rango = vmax - vmin = 9 - 2 = 7
 $ Resultado esperado: 7
-fonc [int] dce_demo() {
-    [int] base = 4;
-    [int] step = 3;
-    [int] live = base + step;
-    [int] dead1 = base * base;
-    [int] dead2 = dead1 + step;
-    [int] dead3 = dead2 * live;
-    ret live;
+
+fonc [int] solo_rango() {
+    [int] v1 = 3;
+    [int] v2 = 7;
+    [int] v3 = 2;
+    [int] v4 = 9;
+    [int] v5 = 5;
+    [int] suma   = v1 + v2 + v3 + v4 + v5;
+    [int] prom   = suma / 5;
+    [int] vmin   = v3;
+    [int] vmax   = v4;
+    [int] ajuste = prom * 2;
+    [int] factor = ajuste - vmin;
+    [int] rango  = vmax - vmin;
+    ret rango;
 }
 
 fonc [int] main() {
-    ret dce_demo();
+    ret solo_rango();
 }

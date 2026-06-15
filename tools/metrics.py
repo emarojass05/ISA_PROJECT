@@ -115,6 +115,7 @@ def _run_simulation(hex_path: Path, max_cycles: int) -> int | str:
         "make", "sv-cpu-exec",
         f"PROGRAM={hex_path}",
         f"MAX_CYCLES={max_cycles}",
+        "CACHE_ENABLE=1",
     ]
     result = subprocess.run(
         cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT)

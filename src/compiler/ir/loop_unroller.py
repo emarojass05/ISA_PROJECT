@@ -176,6 +176,17 @@ def _try_get_trip_count(body: List[IRInstruction],
     loop_var = cmp_instr.left
     bound_str = cmp_instr.right
 
+    # If loop_var is a temp, resolve it to the underlying source variable.
+    # The IR generator loads the loop variable into a temp before comparing:
+    #   _t = i  (IRCopy)
+    #   _tcond = _t < N
+    if loop_var.startswith("_"):
+        for j in range(loop.cond_start, loop.iffalse_idx):
+            instr = body[j]
+            if isinstance(instr, IRCopy) and instr.dest == loop_var:
+                loop_var = instr.src
+                break
+
     # Bound must be an integer literal
     try:
         bound = int(bound_str, 0)
@@ -211,18 +222,36 @@ def _try_get_trip_count(body: List[IRInstruction],
                 except (ValueError, TypeError):
                     pass
         # Pattern: loop_var = temp, where temp = loop_var + step
+        # Also handles: loop_var = tmp2, tmp2 = tmp1 + step, tmp1 = loop_var
         if isinstance(instr, IRCopy) and instr.dest == loop_var:
             src = instr.src
             for k in range(j - 1, loop.body_start - 1, -1):
                 b = body[k]
                 if isinstance(b, IRBinOp) and b.dest == src:
-                    if b.left == loop_var and b.op in (BinOp.ADD, BinOp.SUB):
+                    if b.op not in (BinOp.ADD, BinOp.SUB):
+                        continue
+                    # Direct: tmp = loop_var +/- step
+                    lhs = b.left
+                    if lhs == loop_var:
                         try:
                             s = int(b.right, 0)
                             step = s if b.op == BinOp.ADD else -s
                             break
                         except (ValueError, TypeError):
                             pass
+                    else:
+                        # Indirect: tmp1 = loop_var; tmp2 = tmp1 +/- step
+                        for m in range(k - 1, loop.body_start - 1, -1):
+                            c = body[m]
+                            if isinstance(c, IRCopy) and c.dest == lhs and c.src == loop_var:
+                                try:
+                                    s = int(b.right, 0)
+                                    step = s if b.op == BinOp.ADD else -s
+                                except (ValueError, TypeError):
+                                    pass
+                                break
+                        if step is not None:
+                            break
             if step is not None:
                 break
 

@@ -1,0 +1,10 @@
+$ Feature: large array (600 ints, frame > 2047 bytes) to stress 12-bit sp offset
+$ Expected return (x3): 42
+$ Write to arr@(599) = 42, read it back
+
+fonc [int] main() {
+    [int] *arr(600);
+    arr@(0) = 1;
+    arr@(599) = 42;
+    ret arr@(599);
+}

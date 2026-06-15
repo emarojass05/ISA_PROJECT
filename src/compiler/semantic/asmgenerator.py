@@ -3,6 +3,7 @@ from src.compiler.generated.LanguageVisitor import LanguageVisitor
 
 class AsmGenerator(LanguageVisitor):
     WORD_SIZE = 4
+    IMMED12_MAX = 2047
 
     TEMP_REGISTERS = [
         "t0", "t1", "t2", "t3", "t4",
@@ -101,6 +102,47 @@ class AsmGenerator(LanguageVisitor):
         self.emit(f"luhw {register}, 0x{upper:04X}")
         self.emit(f"llhw {register}, 0x{lower:04X}")
 
+    def emit_sp_adjust(self, delta):
+        # Signed 12-bit immediate limit prevents direct addi for large frames.
+        # Use luhw/llhw + sub/add to handle arbitrary frame sizes.
+        if -2048 <= delta <= self.IMMED12_MAX:
+            self.emit(f"addi sp, sp, {delta}")
+        else:
+            tmp = self.allocate_register()
+            self.emit_load_immediate(tmp, abs(delta))
+            if delta < 0:
+                self.emit(f"sub sp, sp, {tmp}")
+            else:
+                self.emit(f"add sp, sp, {tmp}")
+            self.free_register(tmp)
+
+    def emit_sp_load(self, dest_reg, offset):
+        # Use dest_reg itself as scratch; lw overwrites it anyway.
+        if -2048 <= offset <= self.IMMED12_MAX:
+            self.emit(f"lw {dest_reg}, {offset}(sp)")
+        else:
+            self.emit_load_immediate(dest_reg, offset)
+            self.emit(f"add {dest_reg}, sp, {dest_reg}")
+            self.emit(f"lw {dest_reg}, 0({dest_reg})")
+
+    def emit_sp_store(self, src_reg, offset):
+        if -2048 <= offset <= self.IMMED12_MAX:
+            self.emit(f"sw {src_reg}, {offset}(sp)")
+        else:
+            tmp = self.allocate_register()
+            self.emit_load_immediate(tmp, offset)
+            self.emit(f"add {tmp}, sp, {tmp}")
+            self.emit(f"sw {src_reg}, 0({tmp})")
+            self.free_register(tmp)
+
+    def emit_sp_addr(self, dest_reg, offset):
+        # Use dest_reg itself as scratch for large offsets.
+        if -2048 <= offset <= self.IMMED12_MAX:
+            self.emit(f"addi {dest_reg}, sp, {offset}")
+        else:
+            self.emit_load_immediate(dest_reg, offset)
+            self.emit(f"add {dest_reg}, sp, {dest_reg}")
+
     def emit_move(self, destination, source):
         self.emit(f"addi {destination}, {source}, 0")
 
@@ -108,7 +150,7 @@ class AsmGenerator(LanguageVisitor):
         if symbol.get("is_local"):
             # Local variable: sp-relative frame access (no temp register needed)
             offset = symbol["address"] + self.sp_delta
-            self.emit(f"lw {destination}, {offset}(sp)")
+            self.emit_sp_load(destination, offset)
         else:
             # Global variable: load absolute address into temp register, then load
             address_register = self.allocate_register()
@@ -120,7 +162,7 @@ class AsmGenerator(LanguageVisitor):
         if symbol.get("is_local"):
             # Local variable: sp-relative frame store (no temp register needed)
             offset = symbol["address"] + self.sp_delta
-            self.emit(f"sw {source}, {offset}(sp)")
+            self.emit_sp_store(source, offset)
         else:
             # Global variable: load absolute address into temp register, then store
             address_register = self.allocate_register()
@@ -262,7 +304,7 @@ class AsmGenerator(LanguageVisitor):
 
         # --- Prologue ---
         # Allocate full frame and save return address at sp+0
-        self.emit(f"addi sp, sp, -{frame_size}")
+        self.emit_sp_adjust(-frame_size)
         self.emit(f"sw ra, 0(sp)")
 
         # Store incoming arguments into their frame slots.
@@ -281,7 +323,7 @@ class AsmGenerator(LanguageVisitor):
                 # sp + frame_size + (index - num_arg_regs) * WORD_SIZE
                 extra_offset = frame_size + (index - num_arg_regs) * self.WORD_SIZE
                 tmp_register = self.allocate_register()
-                self.emit(f"lw {tmp_register}, {extra_offset}(sp)")
+                self.emit_sp_load(tmp_register, extra_offset)
                 self.emit_store_symbol(tmp_register, parameter_symbol)
                 self.free_register(tmp_register)
 
@@ -290,7 +332,7 @@ class AsmGenerator(LanguageVisitor):
         # --- Epilogue ---
         self.emit_label(return_label)
         self.emit(f"lw ra, 0(sp)")
-        self.emit(f"addi sp, sp, {frame_size}")
+        self.emit_sp_adjust(frame_size)
         self.emit("jr ra")
 
         self.symbol_table.exit_scope()
@@ -324,7 +366,27 @@ class AsmGenerator(LanguageVisitor):
         name = ctx.ID().getText()
         symbol = self.get_symbol(name, ctx.ID().getSymbol().line)
 
-        if ctx.arrayLiteral():
+        if ctx.STRING_LITERAL():
+            from src.compiler.main import _parse_string_literal
+            chars = _parse_string_literal(ctx.STRING_LITERAL().getText())
+            for index, char_val in enumerate(chars):
+                if symbol.get("is_local"):
+                    element_offset = symbol["address"] + index * self.WORD_SIZE
+                    val_reg = self.allocate_register()
+                    self.emit_load_immediate(val_reg, char_val)
+                    self.emit_sp_store(val_reg, element_offset)
+                    self.free_register(val_reg)
+                else:
+                    addr_reg = self.allocate_register()
+                    val_reg = self.allocate_register()
+                    element_address = symbol["address"] + index * self.WORD_SIZE
+                    self.emit_load_immediate(addr_reg, element_address)
+                    self.emit_load_immediate(val_reg, char_val)
+                    self.emit(f"sw {val_reg}, 0({addr_reg})")
+                    self.free_register(val_reg)
+                    self.free_register(addr_reg)
+
+        elif ctx.arrayLiteral():
             expressions = ctx.arrayLiteral().expr()
 
             for index, expr_ctx in enumerate(expressions):
@@ -333,7 +395,7 @@ class AsmGenerator(LanguageVisitor):
                 if symbol.get("is_local"):
                     # Local array: store directly via sp-relative offset
                     element_offset = symbol["address"] + index * self.WORD_SIZE
-                    self.emit(f"sw {value_register}, {element_offset}(sp)")
+                    self.emit_sp_store(value_register, element_offset)
                 else:
                     # Global array: compute absolute address then store
                     address_register = self.allocate_register()
@@ -583,10 +645,28 @@ class AsmGenerator(LanguageVisitor):
         return self.visit(ctx.logicalOrExpr())
 
     def visitLogicalOrExpr(self, ctx):
-        return self.emit_left_associative(ctx, {"||": "or"})
+        if ctx.getChildCount() == 1:
+            return self.visit(ctx.getChild(0))
+        result = self.emit_to_bool(self.visit(ctx.getChild(0)))
+        i = 1
+        while i < ctx.getChildCount():
+            right = self.emit_to_bool(self.visit(ctx.getChild(i + 1)))
+            self.emit(f"or {result}, {result}, {right}")
+            self.free_register(right)
+            i += 2
+        return result
 
     def visitLogicalAndExpr(self, ctx):
-        return self.emit_left_associative(ctx, {"&&": "and"})
+        if ctx.getChildCount() == 1:
+            return self.visit(ctx.getChild(0))
+        result = self.emit_to_bool(self.visit(ctx.getChild(0)))
+        i = 1
+        while i < ctx.getChildCount():
+            right = self.emit_to_bool(self.visit(ctx.getChild(i + 1)))
+            self.emit(f"and {result}, {result}, {right}")
+            self.free_register(right)
+            i += 2
+        return result
 
     def visitBitwiseOrExpr(self, ctx):
         return self.emit_left_associative(ctx, {"|": "or"})
@@ -635,8 +715,10 @@ class AsmGenerator(LanguageVisitor):
         text = ctx.getText()
 
         if text.startswith("!"):
-            self.emit(f"xori {value_register}, {value_register}, 1")
-            return value_register
+            # Logical NOT: 1 if operand == 0, else 0.  xori ,1 only flips bit 0.
+            zero_reg = self.allocate_register()
+            self.emit(f"addi {zero_reg}, zero, 0")
+            return self.emit_comparison(value_register, zero_reg, "beq")
 
         if text.startswith("-"):
             self.emit(f"sub {value_register}, zero, {value_register}")
@@ -662,7 +744,10 @@ class AsmGenerator(LanguageVisitor):
             return register
 
         if ctx.STRING_LITERAL():
-            raise Exception("String literals are not supported in ASM generation yet")
+            raise Exception(
+                'String literals are not supported as expressions. '
+                'Declare a [char] array instead: [char] *name = "...";'
+            )
 
         if ctx.functionCall():
             return self.visit(ctx.functionCall())
@@ -679,7 +764,7 @@ class AsmGenerator(LanguageVisitor):
             if symbol["kind"] == "array":
                 if symbol.get("is_local"):
                     # Local array: base address = sp + frame_offset
-                    self.emit(f"addi {register}, sp, {symbol['address'] + self.sp_delta}")
+                    self.emit_sp_addr(register, symbol['address'] + self.sp_delta)
                 else:
                     # Global array: load absolute address
                     self.emit_load_immediate(register, symbol["address"])
@@ -778,7 +863,7 @@ class AsmGenerator(LanguageVisitor):
         if symbol["kind"] == "array":
             if symbol.get("is_local"):
                 # Local array: base = sp + frame_offset
-                self.emit(f"addi {address_register}, sp, {symbol['address'] + self.sp_delta}")
+                self.emit_sp_addr(address_register, symbol['address'] + self.sp_delta)
             else:
                 # Global array: absolute address
                 self.emit_load_immediate(address_register, symbol["address"])
@@ -786,15 +871,49 @@ class AsmGenerator(LanguageVisitor):
             # Pointer variable: load its value (the address it points to)
             self.emit_load_symbol(address_register, symbol)
 
-        for expr_ctx in ctx.expr():
-            index_register = self.visit(expr_ctx)
+        exprs = list(ctx.expr())
+        dims  = symbol.get("dims", [])
 
-            self.emit(f"slli {index_register}, {index_register}, 2")
-            self.emit(f"add {address_register}, {address_register}, {index_register}")
+        if len(dims) > 1 and len(exprs) != len(dims):
+            raise Exception(
+                f"Error line {ctx.ID().getSymbol().line}: '{name}' has "
+                f"{len(dims)} dimension(s) but {len(exprs)} index/indices given"
+            )
 
-            self.free_register(index_register)
+        if len(dims) > 1:
+            # Row-major offset: ((i0*d1 + i1)*d2 + ...) * WORD_SIZE
+            acc = self.visit(exprs[0])
+            for k in range(1, len(exprs)):
+                stride = dims[k]
+                stride_reg = self.allocate_register()
+                if isinstance(stride, int):
+                    self.emit_load_immediate(stride_reg, stride)
+                else:
+                    self.emit_load_symbol(stride_reg, self.get_symbol(stride[1]))
+                self.emit(f"mul {acc}, {acc}, {stride_reg}")
+                self.free_register(stride_reg)
+                idx_k = self.visit(exprs[k])
+                self.emit(f"add {acc}, {acc}, {idx_k}")
+                self.free_register(idx_k)
+            self.emit(f"slli {acc}, {acc}, 2")
+            self.emit(f"add {address_register}, {address_register}, {acc}")
+            self.free_register(acc)
+        else:
+            # 1D array or pointer: simple linear indexing
+            for expr_ctx in exprs:
+                index_register = self.visit(expr_ctx)
+                self.emit(f"slli {index_register}, {index_register}, 2")
+                self.emit(f"add {address_register}, {address_register}, {index_register}")
+                self.free_register(index_register)
 
         return address_register
+
+    def emit_to_bool(self, reg):
+        # Normalize reg to 0/1: 1 if reg != 0, else 0.
+        # emit_comparison frees reg and the zero register it allocates.
+        zero_reg = self.allocate_register()
+        self.emit(f"addi {zero_reg}, zero, 0")
+        return self.emit_comparison(reg, zero_reg, "bne")
 
     def emit_left_associative(self, ctx, operator_map):
         result_register = self.visit(ctx.getChild(0))

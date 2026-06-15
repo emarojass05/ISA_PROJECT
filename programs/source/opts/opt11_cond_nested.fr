@@ -1,24 +1,31 @@
 $ opt11_cond_nested.fr
-$ Condicionales anidados con 3 parametros y multiples temporales.
-$ a=3, b=4, c=5, s=12, p=12
-$ s>10? Si. p>10? Si. res = s+p = 24
-$ Resultado esperado: 24
-fonc [int] evaluar([int] a, [int] b, [int] c) {
-    [int] s = a + b + c;
-    [int] p = a * b;
-    [int] res = 0;
-    si (s > 10) {
-        si (p > 10) {
-            res = s + p;
+$ Scheduling -- condicionales anidados con precomputos independientes (pre1,pre2,alt1,alt2).
+$ a=8,b=5,c=12,d=3:
+$   pre1=40, pre2=9, alt1=20, alt2=15, thr=60
+$   pre1>pre2 -> rama then; pre1(40) not > thr(60) -> rama sinon interna
+$   res = c*d + pre2 = 36 + 9 = 45
+$ Resultado esperado: 45
+
+fonc [int] sched_nested([int] a, [int] b, [int] c, [int] d) {
+    [int] pre1 = a * b;
+    [int] pre2 = c - d;
+    [int] alt1 = a + c;
+    [int] alt2 = b * d;
+    [int] res  = 0;
+    si (pre1 > pre2) {
+        [int] thr = b * c;
+        [int] adj = alt1 - alt2;
+        si (pre1 > thr) {
+            res = alt1 + thr;
         } sinon {
-            res = s - p;
+            res = c * d + pre2;
         }
     } sinon {
-        res = p * c;
+        res = alt2 * pre2;
     }
     ret res;
 }
 
 fonc [int] main() {
-    ret evaluar(3, 4, 5);
+    ret sched_nested(8, 5, 12, 3);
 }

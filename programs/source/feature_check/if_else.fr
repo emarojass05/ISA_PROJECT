@@ -1,0 +1,21 @@
+$ Feature: si/sinon (if/else) with nested branches
+$ Expected return (x3): 7
+
+fonc [int] classify([int] x) {
+    si (x > 10) {
+        ret 3;
+    } sinon {
+        si (x > 5) {
+            ret 2;
+        } sinon {
+            ret 1;
+        }
+    }
+}
+
+fonc [int] main() {
+    [int] a = classify(15);
+    [int] b = classify(7);
+    [int] c = classify(2);
+    ret a + b + c;
+}

@@ -1,0 +1,12 @@
+$ Feature: logical operators && || ! with non-boolean operands
+$ Expected return (x3): 3
+$ Tests: (2 && 1) => 1, (0 || 5) => 1, (!5) => 0, (!0) => 1
+$ Accumulate: 1 + 1 + 0 + 1 = 3
+
+fonc [int] main() {
+    [int] r1 = 2 && 1;
+    [int] r2 = 0 || 5;
+    [int] r3 = !5;
+    [int] r4 = !0;
+    ret r1 + r2 + r3 + r4;
+}

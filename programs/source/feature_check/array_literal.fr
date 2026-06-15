@@ -1,0 +1,8 @@
+$ Feature: array initialized with literal {..}, read single element
+$ Expected return (x3): 30
+$ arr = {10, 20, 30, 40}, return arr@(2) = 30
+
+fonc [int] main() {
+    [int] *arr = {10, 20, 30, 40};
+    ret arr@(2);
+}

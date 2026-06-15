@@ -219,7 +219,14 @@ class IRGenerator(LanguageVisitor):
         name   = ctx.ID().getText()
         symbol = self._get_symbol(name, ctx.ID().getSymbol().line)
 
-        if ctx.arrayLiteral():
+        if ctx.STRING_LITERAL():
+            from src.compiler.main import _parse_string_literal
+            chars = _parse_string_literal(ctx.STRING_LITERAL().getText())
+            base = name if self._is_local(symbol) else f"@{name}"
+            for index, char_val in enumerate(chars):
+                self._emit(IRStore(base, index * WORD_SIZE, str(char_val)))
+
+        elif ctx.arrayLiteral():
             base = name if self._is_local(symbol) else f"@{name}"
             for index, expr_ctx in enumerate(ctx.arrayLiteral().expr()):
                 temp = self.visit(expr_ctx)
@@ -374,10 +381,30 @@ class IRGenerator(LanguageVisitor):
         return self.visit(ctx.logicalOrExpr())
 
     def visitLogicalOrExpr(self, ctx):
-        return self._binop_chain(ctx)
+        if ctx.getChildCount() == 1:
+            return self.visit(ctx.getChild(0))
+        result = self._emit_to_bool(self.visit(ctx.getChild(0)))
+        i = 1
+        while i < ctx.getChildCount():
+            right = self._emit_to_bool(self.visit(ctx.getChild(i + 1)))
+            t = self._new_temp()
+            self._emit(IRBinOp(t, result, BinOp.OR, right))
+            result = t
+            i += 2
+        return result
 
     def visitLogicalAndExpr(self, ctx):
-        return self._binop_chain(ctx)
+        if ctx.getChildCount() == 1:
+            return self.visit(ctx.getChild(0))
+        result = self._emit_to_bool(self.visit(ctx.getChild(0)))
+        i = 1
+        while i < ctx.getChildCount():
+            right = self._emit_to_bool(self.visit(ctx.getChild(i + 1)))
+            t = self._new_temp()
+            self._emit(IRBinOp(t, result, BinOp.AND, right))
+            result = t
+            i += 2
+        return result
 
     def visitBitwiseOrExpr(self, ctx):
         return self._binop_chain(ctx)
@@ -399,6 +426,12 @@ class IRGenerator(LanguageVisitor):
 
     def visitMultiplicativeExpr(self, ctx):
         return self._binop_chain(ctx)
+
+    def _emit_to_bool(self, temp: str) -> str:
+        # Normalize temp to 0/1: emit temp != 0, return new temp.
+        result = self._new_temp()
+        self._emit(IRBinOp(result, temp, BinOp.NEQ, "0"))
+        return result
 
     def _binop_chain(self, ctx) -> str:
         """Handle left-associative binary expressions: a + b + c -> t0=a+b; t1=t0+c."""
@@ -448,7 +481,10 @@ class IRGenerator(LanguageVisitor):
             return "1" if ctx.BOOL_LITERAL().getText() == "vrai" else "0"
 
         if ctx.STRING_LITERAL():
-            raise Exception("String literals are not supported in IR generation")
+            raise Exception(
+                'String literals are not supported as expressions. '
+                'Declare a [char] array instead: [char] *name = "...";'
+            )
 
         if ctx.functionCall():
             return self.visit(ctx.functionCall())
@@ -516,13 +552,47 @@ class IRGenerator(LanguageVisitor):
             # Pointer: load its value (which is the address)
             self._emit_load(addr, symbol)
 
-        # Add each index dimension
-        for expr_ctx in ctx.expr():
-            idx    = self.visit(expr_ctx)
-            scaled = self._new_temp()
-            self._emit(IRBinOp(scaled, idx, BinOp.MUL, str(WORD_SIZE)))
+        exprs = list(ctx.expr())
+        dims  = symbol.get("dims", [])
+
+        if len(dims) > 1 and len(exprs) != len(dims):
+            raise Exception(
+                f"Error line {ctx.ID().getSymbol().line}: '{name}' has "
+                f"{len(dims)} dimension(s) but {len(exprs)} index/indices given"
+            )
+
+        if len(dims) > 1:
+            # Row-major offset: ((i0*d1 + i1)*d2 + ...) * WORD_SIZE
+            acc = self.visit(exprs[0])
+            for k in range(1, len(exprs)):
+                stride = dims[k]
+                if isinstance(stride, int):
+                    stride_operand = str(stride)
+                else:
+                    stride_operand = self._new_temp()
+                    self._emit_load(
+                        stride_operand,
+                        self._get_symbol(stride[1], ctx.ID().getSymbol().line)
+                    )
+                t_scaled = self._new_temp()
+                self._emit(IRBinOp(t_scaled, acc, BinOp.MUL, stride_operand))
+                t_sum = self._new_temp()
+                idx_k = self.visit(exprs[k])
+                self._emit(IRBinOp(t_sum, t_scaled, BinOp.ADD, idx_k))
+                acc = t_sum
+            scaled   = self._new_temp()
+            self._emit(IRBinOp(scaled, acc, BinOp.MUL, str(WORD_SIZE)))
             new_addr = self._new_temp()
             self._emit(IRBinOp(new_addr, addr, BinOp.ADD, scaled))
             addr = new_addr
+        else:
+            # 1D array or pointer: simple linear indexing
+            for expr_ctx in exprs:
+                idx      = self.visit(expr_ctx)
+                scaled   = self._new_temp()
+                self._emit(IRBinOp(scaled, idx, BinOp.MUL, str(WORD_SIZE)))
+                new_addr = self._new_temp()
+                self._emit(IRBinOp(new_addr, addr, BinOp.ADD, scaled))
+                addr = new_addr
 
         return addr

@@ -1,0 +1,13 @@
+$ Feature: alors (while) loop
+$ Expected return (x3): 10
+$ Sum 1..4 = 10
+
+fonc [int] main() {
+    [int] i = 1;
+    [int] sum = 0;
+    alors (i <= 4) {
+        sum = sum + i;
+        i++;
+    }
+    ret sum;
+}

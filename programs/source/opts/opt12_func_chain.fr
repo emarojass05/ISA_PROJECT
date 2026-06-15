@@ -1,25 +1,37 @@
 $ opt12_func_chain.fr
-$ Cadena de 3 funciones con logica no trivial.
-$ cuadrado(x) = x*x
-$ suma_cuadrados(a,b) = a^2 + b^2
-$ resultado(a,b) = suma_cuadrados(a,b) + a + b
-$ resultado(3,4) = (9+16) + 3 + 4 = 32
-$ Resultado esperado: 32
-fonc [int] cuadrado([int] x) {
-    ret x * x;
+$ Scheduling -- cadena multi-funcion; dentro de cada funcion hay instrucciones
+$ paralelas elegibles para reordenamiento por el scheduler.
+$ nivel1(5): a=15,b=12,c=25 -> 52
+$ nivel2(52): p=13,q=2,r=26,s=26 -> 26
+$ nivel3(26): m=53,n=23,k=1219,j=76 -> 1143
+$ Resultado esperado: 1143
+
+fonc [int] nivel1([int] x) {
+    [int] a = x * 3;
+    [int] b = x + 7;
+    [int] c = x * x;
+    ret a + b + c;
 }
 
-fonc [int] suma_cuadrados([int] a, [int] b) {
-    [int] ca = cuadrado(a);
-    [int] cb = cuadrado(b);
-    ret ca + cb;
+fonc [int] nivel2([int] v) {
+    [int] p = v / 4;
+    [int] q = v % 5;
+    [int] r = p * q;
+    [int] s = v - r;
+    ret s;
 }
 
-fonc [int] resultado([int] a, [int] b) {
-    [int] sc = suma_cuadrados(a, b);
-    ret sc + a + b;
+fonc [int] nivel3([int] u) {
+    [int] m = u * 2 + 1;
+    [int] n = u - 3;
+    [int] k = m * n;
+    [int] j = m + n;
+    ret k - j;
 }
 
 fonc [int] main() {
-    ret resultado(3, 4);
+    [int] r1 = nivel1(5);
+    [int] r2 = nivel2(r1);
+    [int] r3 = nivel3(r2);
+    ret r3;
 }

@@ -1,20 +1,26 @@
 $ opt03_unroll_nested.fr
-$ Loop externo variable (n=4), loop interno trip-count 3.
-$ fila = sum(j * (j+1)) for j=0..2 = 0+2+6 = 8
-$ total = n * fila = 4 * 8 = 32
-$ Resultado esperado: 32
-fonc [int] suma_fila([int] n) {
+$ Loop unrolling -- bucles anidados, outer N=6 variable, inner trip-count=4 constante.
+$ mat_sum(6): para cada fila i acumula row_acc = sum_{j=1}^{4}(i+1)*(j+1),
+$ mas un bias acumulativo. Inner loop es el candidato principal a unrolling.
+$ Resultado esperado: 245
+
+fonc [int] mat_sum([int] n) {
     [int] total = 0;
+    [int] bias  = 0;
     pour ([int] i = 0; i < n; i = i + 1) {
-        [int] fila = 0;
-        pour ([int] j = 0; j < 3; j = j + 1) {
-            fila = fila + j * (j + 1);
+        [int] row_acc = 0;
+        pour ([int] j = 0; j < 4; j = j + 1) {
+            [int] ri   = i + 1;
+            [int] rj   = j + 1;
+            [int] cell = ri * rj;
+            row_acc = row_acc + cell;
         }
-        total = total + fila;
+        bias  = bias + i;
+        total = total + row_acc + bias;
     }
     ret total;
 }
 
 fonc [int] main() {
-    ret suma_fila(4);
+    ret mat_sum(6);
 }
