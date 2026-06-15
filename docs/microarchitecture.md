@@ -10,22 +10,22 @@ IF → ID → EX → MEM → WB
 
 La implementación conserva la ISA GAEM definida en el Proyecto Grupal I y extiende la organización interna del procesador con pipeline, manejo de hazards, forwarding, jerarquía de caché L1-D/L2, modelo de memoria principal con latencia multiciclo y contadores de rendimiento.
 
-| Aspecto                  | Decisión de diseño                                                              |
-| ------------------------ | -------------------------------------------------------------------------------- |
-| Tipo de procesador       | RISC de 32 bits                                                                  |
-| Organización             | Pipeline de 5 etapas                                                             |
-| Etapas                   | IF, ID, EX, MEM, WB                                                              |
-| Memoria de instrucciones | ROM/IMEM separada, acceso directo desde IF                                       |
-| Memoria de datos         | Jerarquía L1-D → L2 → memoria principal, con bypass configurable                 |
-| Ancho de palabra         | 32 bits                                                                          |
-| Ancho de instrucción     | 32 bits                                                                          |
-| Banco de registros       | 32 registros de 32 bits                                                          |
-| Unidad de seguridad      | `sec_alu.sv`                                                                     |
-| Bóveda de llaves         | `key_vault.sv`                                                                   |
-| Jerarquía de caché       | `cache_hierarchy.sv`, `cache_ctrl.sv`, `cache_l1d.sv`, `cache_l2.sv`             |
-| Memoria principal        | `main_mem_model.sv`                                                              |
-| Write buffer             | `mem_write_buffer.sv`                                                            |
-| Módulo principal         | `cpu_top.sv`                                                                     |
+| Aspecto                  | Decisión de diseño                                                   |
+| ------------------------ | -------------------------------------------------------------------- |
+| Tipo de procesador       | RISC de 32 bits                                                      |
+| Organización             | Pipeline de 5 etapas                                                 |
+| Etapas                   | IF, ID, EX, MEM, WB                                                  |
+| Memoria de instrucciones | ROM/IMEM separada, acceso directo desde IF                           |
+| Memoria de datos         | Jerarquía L1-D → L2 → memoria principal, con bypass configurable     |
+| Ancho de palabra         | 32 bits                                                              |
+| Ancho de instrucción     | 32 bits                                                              |
+| Banco de registros       | 32 registros de 32 bits                                              |
+| Unidad de seguridad      | `sec_alu.sv`                                                         |
+| Bóveda de llaves         | `key_vault.sv`                                                       |
+| Jerarquía de caché       | `cache_hierarchy.sv`, `cache_ctrl.sv`, `cache_l1d.sv`, `cache_l2.sv` |
+| Memoria principal        | `main_mem_model.sv`                                                  |
+| Write buffer             | `mem_write_buffer.sv`                                                |
+| Módulo principal         | `cpu_top.sv`                                                         |
 
 El diseño está orientado a simulación ciclo a ciclo con Icarus Verilog. La finalidad principal es medir el impacto de la jerarquía de memoria y de las optimizaciones del compilador sobre métricas como ciclos totales, IPC, misses de caché, stalls y tráfico hacia memoria principal.
 
@@ -89,31 +89,31 @@ src/cpu/cpu_top.sv
 
 Este módulo instancia y conecta los principales bloques del procesador:
 
-| Instancia      | Módulo                 | Función                                                        |
-| -------------- | ---------------------- | -------------------------------------------------------------- |
-| `u_pc`         | `pc.sv`                | Mantiene el Program Counter                                    |
-| `u_pc_adder`   | `pc_adder.sv`          | Calcula `PC + 4`                                               |
-| `u_imem`       | `instr_mem.sv`         | Memoria de instrucciones                                       |
-| `u_decoder`    | `decoder.sv`           | Decodifica campos de instrucción                               |
-| `u_cu`         | `control_unit.sv`      | Genera señales de control                                      |
-| `u_rf`         | `register_file.sv`     | Banco de registros de 32 entradas                              |
-| `u_alu`        | `alu.sv`               | Operaciones aritméticas y lógicas                              |
-| `u_sec_alu`    | `sec_alu.sv`           | Operaciones de seguridad                                       |
-| `u_key_vault`  | `key_vault.sv`         | Almacenamiento protegido de llaves                             |
-| `u_cache`      | `cache_hierarchy.sv`   | Jerarquía de memoria L1-D/L2/memoria principal                 |
-| `u_hazard`     | `hazard_unit.sv`       | Control de stalls y flushes                                    |
-| `u_forwarding` | `forwarding_unit.sv`   | Reenvío de resultados entre etapas                             |
+| Instancia      | Módulo               | Función                                        |
+| -------------- | -------------------- | ---------------------------------------------- |
+| `u_pc`         | `pc.sv`              | Mantiene el Program Counter                    |
+| `u_pc_adder`   | `pc_adder.sv`        | Calcula `PC + 4`                               |
+| `u_imem`       | `instr_mem.sv`       | Memoria de instrucciones                       |
+| `u_decoder`    | `decoder.sv`         | Decodifica campos de instrucción               |
+| `u_cu`         | `control_unit.sv`    | Genera señales de control                      |
+| `u_rf`         | `register_file.sv`   | Banco de registros de 32 entradas              |
+| `u_alu`        | `alu.sv`             | Operaciones aritméticas y lógicas              |
+| `u_sec_alu`    | `sec_alu.sv`         | Operaciones de seguridad                       |
+| `u_key_vault`  | `key_vault.sv`       | Almacenamiento protegido de llaves             |
+| `u_cache`      | `cache_hierarchy.sv` | Jerarquía de memoria L1-D/L2/memoria principal |
+| `u_hazard`     | `hazard_unit.sv`     | Control de stalls y flushes                    |
+| `u_forwarding` | `forwarding_unit.sv` | Reenvío de resultados entre etapas             |
 
 El módulo recibe como parámetros:
 
-| Parámetro       | Descripción                                                                 |
-| --------------- | --------------------------------------------------------------------------- |
-| `XLEN`          | Ancho de palabra del procesador, por defecto 32 bits                        |
-| `IMEM_DEPTH`    | Profundidad de la memoria de instrucciones                                  |
-| `DMEM_DEPTH`    | Profundidad de la memoria de datos o memoria principal simulada             |
-| `CACHE_ENABLE`  | Habilita la jerarquía de caché cuando es diferente de cero                  |
-| `PROGRAM_FILE`  | Archivo `.hex` usado para inicializar la memoria de instrucciones           |
-| `INITIAL_MEM`   | Archivo `.mem` usado para inicializar memoria de datos/memoria principal    |
+| Parámetro      | Descripción                                                              |
+| -------------- | ------------------------------------------------------------------------ |
+| `XLEN`         | Ancho de palabra del procesador, por defecto 32 bits                     |
+| `IMEM_DEPTH`   | Profundidad de la memoria de instrucciones                               |
+| `DMEM_DEPTH`   | Profundidad de la memoria de datos o memoria principal simulada          |
+| `CACHE_ENABLE` | Habilita la jerarquía de caché cuando es diferente de cero               |
+| `PROGRAM_FILE` | Archivo `.hex` usado para inicializar la memoria de instrucciones        |
+| `INITIAL_MEM`  | Archivo `.mem` usado para inicializar memoria de datos/memoria principal |
 
 ---
 
@@ -454,12 +454,12 @@ Genera señales para controlar stalls y flushes:
 
 La unidad considera tres fuentes principales de control:
 
-| Caso                 | Acción principal                                             |
-| -------------------- | ------------------------------------------------------------ |
-| `cache_stall = 1`    | Congela PC e IF/ID; evita avance del pipeline                |
-| RAW hazard           | Congela PC e IF/ID; inserta burbuja en ID/EX                 |
-| Branch tomado        | Hace flush de IF/ID e ID/EX                                  |
-| Jump tomado          | Hace flush de IF/ID                                          |
+| Caso              | Acción principal                              |
+| ----------------- | --------------------------------------------- |
+| `cache_stall = 1` | Congela PC e IF/ID; evita avance del pipeline |
+| RAW hazard        | Congela PC e IF/ID; inserta burbuja en ID/EX  |
+| Branch tomado     | Hace flush de IF/ID e ID/EX                   |
+| Jump tomado       | Hace flush de IF/ID                           |
 
 El stall por caché tiene prioridad sobre los demás casos porque representa una solicitud de memoria aún no resuelta.
 
@@ -488,39 +488,41 @@ Cuando la caché está deshabilitada, `cache_hierarchy.sv` enruta las solicitude
 
 ### 10.1 L1-D
 
-| Parámetro       | Valor                                      |
-| --------------- | ------------------------------------------ |
-| Tamaño          | 4 KB                                       |
-| Asociatividad   | 2-way set associative                      |
-| Sets            | 64                                         |
-| Línea           | 32 bytes / 8 palabras de 32 bits           |
-| Política write  | Write-back                                 |
-| Miss de store   | Write-allocate                             |
-| Reemplazo       | LRU con 1 bit por set                      |
+| Parámetro      | Valor                            |
+| -------------- | -------------------------------- |
+| Tamaño         | 4 KB                             |
+| Asociatividad  | 2-way set associative            |
+| Sets           | 64                               |
+| Línea          | 32 bytes / 8 palabras de 32 bits |
+| Política write | Write-back                       |
+| Miss de store  | Write-allocate                   |
+| Reemplazo      | LRU con 1 bit por set            |
 
 ### 10.2 L2
 
-| Parámetro       | Valor                                      |
-| --------------- | ------------------------------------------ |
-| Tamaño          | 16 KB                                      |
-| Asociatividad   | 4-way set associative                      |
-| Sets            | 128                                        |
-| Línea           | 32 bytes / 8 palabras de 32 bits           |
-| Política write  | Write-back                                 |
-| Reemplazo       | Pseudo-LRU de 3 bits por set               |
+| Parámetro      | Valor                            |
+| -------------- | -------------------------------- |
+| Tamaño         | 16 KB                            |
+| Asociatividad  | 4-way set associative            |
+| Sets           | 128                              |
+| Línea          | 32 bytes / 8 palabras de 32 bits |
+| Política write | Write-back                       |
+| Reemplazo      | Pseudo-LRU de 3 bits por set     |
 
 ### 10.3 Memoria principal
 
 La memoria principal se modela en `main_mem_model.sv` como una memoria de palabras de 32 bits con transferencias por línea completa de 256 bits.
 
-| Parámetro       | Valor base                                  |
-| --------------- | ------------------------------------------- |
-| Línea transferida | 256 bits / 32 bytes                       |
-| Latencia          | 25 ciclos                                 |
-| Inicialización    | `$readmemh` mediante `INITIAL_MEM`         |
-| Transacción       | Pulso `req`, espera, pulso `ready`         |
+| Parámetro         | Valor base                                                   |
+| ----------------- | ------------------------------------------------------------ |
+| Capacidad         | 64 KB (`DEPTH=16384` palabras de 32 bits)                    |
+| Línea transferida | 256 bits / 32 bytes                                          |
+| Latencia base     | 25 ticks de memoria (`LATENCY=25`)                           |
+| Latencia efectiva | `LATENCY * MEM_CLK_DIV` ciclos de CPU (default 25 x 4 = 100) |
+| Inicialización    | `$readmemh` mediante `INITIAL_MEM`                           |
+| Transacción       | Pulso `req`, espera, pulso `ready`                           |
 
-La implementación modela el costo temporal de memoria externa mediante espera multiciclo en simulación. Esto permite generar stalls prolongados medibles sin modificar la ISA.
+La implementación modela el costo temporal de memoria externa mediante espera multiciclo en simulación. La FSM de latencia avanza un tick cada `MEM_CLK_DIV` ciclos de CPU (esquema de clock-enable sobre un único dominio de reloj físico), simulando una frecuencia de memoria más baja sin CDC real ni PLL. Esto permite generar stalls prolongados medibles sin modificar la ISA.
 
 ---
 
@@ -536,13 +538,13 @@ Esta señal se conecta a la unidad de riesgos. Cuando `cache_stall = 1`, la unid
 
 Comportamiento general:
 
-| Caso                  | Efecto sobre el pipeline                                      |
-| --------------------- | ------------------------------------------------------------- |
-| L1 hit                | No se agregan stalls                                           |
-| L1 miss + L2 hit      | Se mantiene `cache_stall` hasta llenar L1                     |
-| L1 miss + L2 miss     | Se accede a memoria principal y se mantiene el stall          |
-| Dirty L1 eviction     | La línea modificada se escribe de vuelta hacia L2             |
-| Dirty L2 eviction     | La línea se encola en el write buffer para drenaje a memoria  |
+| Caso              | Efecto sobre el pipeline                                     |
+| ----------------- | ------------------------------------------------------------ |
+| L1 hit            | No se agregan stalls                                         |
+| L1 miss + L2 hit  | Se mantiene `cache_stall` hasta llenar L1                    |
+| L1 miss + L2 miss | Se accede a memoria principal y se mantiene el stall         |
+| Dirty L1 eviction | La línea modificada se escribe de vuelta hacia L2            |
+| Dirty L2 eviction | La línea se encola en el write buffer para drenaje a memoria |
 
 El controlador de caché usa una FSM interna para secuenciar los casos de miss, write-back, fetch de memoria, llenado de L2 y llenado de L1.
 
@@ -687,10 +689,10 @@ make sv-cpu-exec PROGRAM=programs/hex/program.hex
 
 El diseño distingue dos modos:
 
-| Modo                    | Uso                                                        |
-| ----------------------- | ---------------------------------------------------------- |
-| `CACHE_ENABLE = 0`      | Acceso a memoria de bypass dentro de `cache_hierarchy.sv`  |
-| `CACHE_ENABLE != 0`     | Acceso mediante L1-D, L2, write buffer y memoria principal |
+| Modo                | Uso                                                        |
+| ------------------- | ---------------------------------------------------------- |
+| `CACHE_ENABLE = 0`  | Acceso a memoria de bypass dentro de `cache_hierarchy.sv`  |
+| `CACHE_ENABLE != 0` | Acceso mediante L1-D, L2, write buffer y memoria principal |
 
 La memoria de bypass permite verificar que el resultado funcional sea el mismo con y sin caché. La memoria principal modelada permite observar el costo de misses y transferencias de líneas completas.
 
@@ -702,22 +704,22 @@ La memoria de bypass permite verificar que el resultado funcional sea el mismo c
 
 ### 17.1 Contadores del procesador
 
-| Contador                  | Descripción                                                |
-| ------------------------- | ---------------------------------------------------------- |
-| `perf_instr_retired`      | Instrucciones que avanzan sin flush ni stall de caché      |
-| `perf_ctrl_stall_cycles`  | Slots perdidos por branches y jumps tomados                |
+| Contador                 | Descripción                                           |
+| ------------------------ | ----------------------------------------------------- |
+| `perf_instr_retired`     | Instrucciones que avanzan sin flush ni stall de caché |
+| `perf_ctrl_stall_cycles` | Slots perdidos por branches y jumps tomados           |
 
 ### 17.2 Contadores de caché
 
-| Contador                  | Descripción                                                |
-| ------------------------- | ---------------------------------------------------------- |
-| `perf_l1_accesses`        | Solicitudes totales a L1-D                                 |
-| `perf_l1_hits`            | Hits en L1-D                                               |
-| `perf_l1_misses`          | Misses en L1-D                                             |
-| `perf_l2_hits`            | Hits en L2 después de miss en L1                           |
-| `perf_l2_misses`          | Misses en L2 que requieren memoria principal               |
-| `perf_mm_accesses`        | Accesos/fetches a memoria principal                        |
-| `perf_cache_stall_cycles` | Ciclos durante los cuales `cache_stall` estuvo activo      |
+| Contador                  | Descripción                                           |
+| ------------------------- | ----------------------------------------------------- |
+| `perf_l1_accesses`        | Solicitudes totales a L1-D                            |
+| `perf_l1_hits`            | Hits en L1-D                                          |
+| `perf_l1_misses`          | Misses en L1-D                                        |
+| `perf_l2_hits`            | Hits en L2 después de miss en L1                      |
+| `perf_l2_misses`          | Misses en L2 que requieren memoria principal          |
+| `perf_mm_accesses`        | Accesos/fetches a memoria principal                   |
+| `perf_cache_stall_cycles` | Ciclos durante los cuales `cache_stall` estuvo activo |
 
 El testbench `tb_cpu_program.sv` usa estos contadores para generar `build/sim/metrics.txt`.
 
@@ -749,13 +751,13 @@ Ejemplo:
 lw x5, 0(x10)
 ```
 
-| Etapa | Acción                                      |
-| ----- | ------------------------------------------- |
-| IF    | Se lee la instrucción                       |
-| ID    | Se decodifica y se lee `x10`                |
-| EX    | La ALU calcula `R[x10] + offset`            |
-| MEM   | Se consulta L1-D/L2/memoria principal       |
-| WB    | Se escribe el dato leído en `x5`            |
+| Etapa | Acción                                |
+| ----- | ------------------------------------- |
+| IF    | Se lee la instrucción                 |
+| ID    | Se decodifica y se lee `x10`          |
+| EX    | La ALU calcula `R[x10] + offset`      |
+| MEM   | Se consulta L1-D/L2/memoria principal |
+| WB    | Se escribe el dato leído en `x5`      |
 
 Ejemplo store:
 
@@ -763,13 +765,13 @@ Ejemplo store:
 sw x5, 0(x10)
 ```
 
-| Etapa | Acción                                      |
-| ----- | ------------------------------------------- |
-| IF    | Se lee la instrucción                       |
-| ID    | Se leen `x5` y `x10`                        |
-| EX    | Se calcula la dirección efectiva            |
-| MEM   | Se escribe mediante la jerarquía de caché   |
-| WB    | No hay escritura en registros               |
+| Etapa | Acción                                    |
+| ----- | ----------------------------------------- |
+| IF    | Se lee la instrucción                     |
+| ID    | Se leen `x5` y `x10`                      |
+| EX    | Se calcula la dirección efectiva          |
+| MEM   | Se escribe mediante la jerarquía de caché |
+| WB    | No hay escritura en registros             |
 
 ---
 
@@ -847,20 +849,20 @@ Esto detiene la simulación. En la versión actual no se implementa recuperació
 
 ## 23. Justificación de decisiones de diseño
 
-| Decisión                             | Justificación                                                                    |
-| ------------------------------------ | -------------------------------------------------------------------------------- |
-| Instrucciones de 32 bits             | Simplifican fetch, decode y cálculo del PC                                       |
-| ISA sin cambios respecto al PG1      | Permite comparar mejoras microarquitecturales sin alterar semántica              |
-| Pipeline de 5 etapas                 | Permite organizar IF, ID, EX, MEM y WB de forma clásica                          |
-| Forwarding                           | Reduce stalls por dependencias de datos                                          |
-| Hazard unit                          | Controla stalls y flushes en branches, jumps, RAW hazards y misses de caché      |
-| L1-D 2-way                           | Balance entre simplicidad de implementación y reducción de conflictos            |
-| L2 4-way                             | Reduce misses de capacidad/conflicto antes de acceder a memoria principal        |
-| Write-back                           | Disminuye tráfico hacia niveles inferiores                                       |
-| Write-allocate en L1                 | Aprovecha localidad temporal después de stores                                   |
-| Write buffer                         | Permite drenar evictions sucias sin bloquear innecesariamente algunas lecturas    |
-| `sec_alu` separada de la ALU general | Mantiene modularidad entre operaciones comunes y criptográficas                  |
-| TEA como primitiva                   | Reduce complejidad de hardware frente a una instrucción completa de 32 rondas     |
+| Decisión                             | Justificación                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------------ |
+| Instrucciones de 32 bits             | Simplifican fetch, decode y cálculo del PC                                     |
+| ISA sin cambios respecto al PG1      | Permite comparar mejoras microarquitecturales sin alterar semántica            |
+| Pipeline de 5 etapas                 | Permite organizar IF, ID, EX, MEM y WB de forma clásica                        |
+| Forwarding                           | Reduce stalls por dependencias de datos                                        |
+| Hazard unit                          | Controla stalls y flushes en branches, jumps, RAW hazards y misses de caché    |
+| L1-D 2-way                           | Balance entre simplicidad de implementación y reducción de conflictos          |
+| L2 4-way                             | Reduce misses de capacidad/conflicto antes de acceder a memoria principal      |
+| Write-back                           | Disminuye tráfico hacia niveles inferiores                                     |
+| Write-allocate en L1                 | Aprovecha localidad temporal después de stores                                 |
+| Write buffer                         | Permite drenar evictions sucias sin bloquear innecesariamente algunas lecturas |
+| `sec_alu` separada de la ALU general | Mantiene modularidad entre operaciones comunes y criptográficas                |
+| TEA como primitiva                   | Reduce complejidad de hardware frente a una instrucción completa de 32 rondas  |
 
 ---
 
@@ -890,5 +892,5 @@ Aunque el ISA puede explicarse mediante las etapas clásicas IF, ID, EX, MEM y W
 - Los saltos condicionales se resuelven en la etapa EX.
 - Los saltos incondicionales pueden redirigir el PC desde la etapa ID.
 - La memoria de instrucciones y la memoria de datos se mantienen separadas.
-- El modelo de memoria principal reproduce latencia multiciclo; el cruce explícito entre dominios de reloj puede documentarse como mejora futura si se requiere una simulación más cercana a hardware físico.
+- El modelo de memoria principal reproduce latencia multiciclo y una frecuencia más baja mediante clock-enable (`MEM_CLK_DIV`, default de sistema 4 -> latencia efectiva `LATENCY * 4` ciclos de CPU) sobre un único dominio de reloj físico; no implementa un cruce real de dominios de reloj (CDC) ni PLL.
 - Los contadores actuales reportan accesos agregados de caché; el desglose read/write puede agregarse extendiendo `cache_ctrl.sv` con contadores separados para `mem_read` y `mem_write`.
